@@ -154,12 +154,34 @@ Drop all NAs:
 ```{r}
 S06Var05.ts <- raw %>%
   select(S06Var05) %>%
+  filter(S06Var05 < 100) %>%
   drop_na() %>%
   ts()
 
 S06Var07.ts <- raw %>%
   select(S06Var07) %>%
+  filter(S06Var07 < 100) %>%
   drop_na() %>%
   ts()
 ```
+
+I don't know if I treated the NAs exactly the right way... maybe better would have been to smoothly impute over them. But for now I'm just going to move on with my model. If I want to rerun the model later with the NAs imputed, that should be doable.
+
+*Check whether this fits a decomposition model and run it. What kind of decomposition will you choose? Produce forecasts.
+
+```{r}
+autoplot(S06Var05.ts)
+```
+
+
+As it stands, S06Var05.ts has a frequency of 1. I have a hunch this data is prices for 
+stocks not traded on weekends/holidays. So I will set the frequency to 52 to enable a seasonal 
+decomposition, just to see what happens.
+```{r}
+ts(S06Var05.ts, frequency = 30) %>% decompose(type = 'additive') %>%
+  autoplot() + xlab('Time') +
+  ggtitle('Classical multiplicative decomp S06Var05')
+```
+
+A classical decomposition doesn't seem like a good model. The seasonal component is very small relative to the trend component and the level of the data. Varying the frequency of the time series didn't change this. Let's turn to exponential smoothing / methods based on exponential smoothing. The tiny seasonal component isn't going to change with some other decomposition method, even though other methods have other advantages.
 
