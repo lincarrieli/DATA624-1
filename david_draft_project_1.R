@@ -2,7 +2,7 @@ library(ggplot2)
 library(mice)
 library(forecast)
 
-data <- read.csv("project_1_data.csv", header = TRUE)
+data <- read.csv("https://raw.githubusercontent.com/dmoste/DATA624/main/project_1_data.csv", header = TRUE)
 
 s01 <- subset(data, group == "S01")
 s02 <- subset(data, group == "S02")
