@@ -14,7 +14,7 @@ s05 <- subset(data, group == "S05")
 s06 <- subset(data, group == "S06")
 
 # Just working with s01v02 due to lack of missing values
-s01_v02_ts <- ts(s01[1:1622,4])
+s01_v02_ts <- ts(window(s01$Var02, end = 1622))
 
 # Trying to get a visual of the data
 autoplot(s01_v02_ts)
@@ -29,10 +29,18 @@ s01_v02_ts %>% diff() %>% ggtsdisplay(main="")
 
 s01_v02_ts %>% diff() %>% ur.kpss() %>% summary()
 
+# What happens if I log the series?
+log_s01_v02_ts <- log(s01_v02_ts)
+
+log_s01_v02_ts %>% diff() %>% ggtsdisplay(main="")
+
+log_s01_v02_ts %>% diff() %>% ur.kpss() %>% summary()
+
 # Just trying an arima fit real quick to see how it looks (Since data is stationary)
-(fit <- auto.arima(s01_v02_ts, seasonal = FALSE,
+(fit <- auto.arima(log_s01_v02_ts, seasonal = FALSE,
                     stepwise = FALSE, approximation = FALSE))
 
 checkresiduals(fit)
 
 fit %>% forecast(h = 140) %>% autoplot()
+
