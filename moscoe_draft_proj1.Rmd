@@ -261,3 +261,59 @@ Okay. It's time to check conditions on whether an ARIMA model is appropriate, an
 
 I don't know that an ARIMA model is appropriate, because the data is not stationary, and the differenced data of order 1 and order 2 are not stationary. ARIMA models assume stationarity. So I'm going to go back to Exponential smoothing.
 
+- Simple exponential smoothing is for data without trend. But this data clearly has trend.
+
+```{r}
+
+wdw <- window(S06Var05.ts, start = 1000)
+
+exp_smth <- ses(wdw, h = 20)
+autoplot(wdw) +
+  autolayer(fitted(exp_smth), series = "Fitted")
+```
+
+That is very lame.
+
+Go back to damped Holt's again: (section 7.2)
+
+```{r}
+#Starting with an automatically determined model:
+holt_damped <- holt(S06Var05.ts, damped = TRUE, phi = 0.8)
+autoplot(wdw) +
+  autolayer(holt_damped, series = "damped", PI = TRUE)
+?autoplot
+```
+
+Why is the trend completely lost here? What is phi?
+
+```{r}
+summary(holt_damped)
+```
+
+phi = 0.9733, so yes, very close to 1 when determined automatically. But even when I set it to 0.8, there's no noticeable trend. "We have set the damping parameter to a relatively low number (phi = 0.90)... usually we would estimate phi along with the other parameters" (7.2). 
+
+"Use time-series cross-validation to compare the one-step forecast accuracy of the three methods" (7.2).
+
+```{r}
+e1 <- tsCV(S06Var05.ts, ses, h = 1)
+e2 <- tsCV(S06Var05.ts, holt, h = 1)
+e3 <- tsCV(S06Var05.ts, holt, damped = TRUE, h = 1)
+
+#Compare MSE:
+mean(e1^2, na.rm=TRUE)
+
+mean(e2^2, na.rm=TRUE)
+
+mean(e3^2, na.rm=TRUE)
+
+# Compare MAE:
+mean(abs(e1), na.rm=TRUE)
+
+mean(abs(e2), na.rm=TRUE)
+
+mean(abs(e3), na.rm=TRUE)
+```
+
+Straight exponential smoothing has the lowest MAE and MSE.
+
+Yes, all those NAs are at the end. I thought I dropped those rows, but now I remember I kept them in because the SeriesInd values for those rows are not strictly sequential.
