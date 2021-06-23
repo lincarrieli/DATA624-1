@@ -185,3 +185,79 @@ ts(S06Var05.ts, frequency = 30) %>% decompose(type = 'additive') %>%
 
 A classical decomposition doesn't seem like a good model. The seasonal component is very small relative to the trend component and the level of the data. Varying the frequency of the time series didn't change this. Let's turn to exponential smoothing / methods based on exponential smoothing. The tiny seasonal component isn't going to change with some other decomposition method, even though other methods have other advantages.
 
+Exponential smoothing: Holt:
+
+```{r}
+holt_undamped <- holt(S06Var05.ts, h = 500)
+holt_damped <- holt(S06Var05.ts, damped = TRUE, phi = 0.9, h = 500)
+autoplot(S06Var05.ts) +
+  autolayer(holt_undamped, PI = FALSE) +
+  autolayer(holt_damped, series = "damped", PI = FALSE)
+```
+
+This might be promising. The undamped forecast line seems plausible. Actually, both seem plausible. This is a model to come back to and refine after you have a few other candidate models.
+
+There are other exponential smoothing models that you might want to try.
+
+*Then do an ARIMA model with first differences. Produce forecasts.
+
+```{r}
+autoplot(Acf(diff(S06Var05.ts)))
+```
+
+There are many lags with autocorrelation here. The differenced data is not stationary, as evidenced by this ACF plot and a Box-Ljung test below.
+
+```{r}
+autoplot(diff(S06Var05.ts))
+```
+
+Odd, because the graph definitely looks like stationary data.
+
+Second-order differences:
+
+```{r}
+autoplot(Acf(diff(S06Var05.ts, differences = 2)))
+```
+
+```{r}
+Box.test(diff(S06Var05.ts, differences = 2), type = 'Ljung-Box')
+```
+Still definitely not stationary. But why does this matter?
+"We normally restrict autoregressive models to stationary data" (8.3).
+"The same stationarity and invertibility conditions that are used for autoregressive and moving average models also apply to an ARIMA model."
+```{r}
+autoplot(Pacf(S06Var05.ts))
+```
+
+The PACF plot also shows several lags with significant autocorrelation. What does that mean? It seems like autocorrelation should make the model easier to fit, since we can get more information from previous values. But somehow I feel like we're supposed to see stationary data. Also, this raises again the question of what is stationary data. 
+
+```{r}
+Box.test(diff(S06Var05.ts), lag = 1, type = 'Ljung-Box')
+```
+
+The p value is very small, which means that the differenced data is not stationary. Why does this matter?
+
+```{r}
+auto_arima_fit <- auto.arima(S06Var05.ts)
+summary(auto_arima_fit)
+```
+
+```{r}
+checkresiduals(auto_arima_fit)
+```
+
+Thinking back to assessing the missing data: you don't care whether the variability of the differences across gaps is greater... you care if the average difference across gaps is greater. You need to look at levels, not variances.
+
+These residuals seem okay... you have those few nasty outliers.
+
+How do you know if this model is good or not?
+
+```{r}
+tmp_arima <- Arima(S06Var05.ts, order = c(2,1,2), include.drift = TRUE)
+autoplot(forecast(tmp_arima, h = 200))
+```
+
+Okay. It's time to check conditions on whether an ARIMA model is appropriate, and then fit one.
+
+I don't know that an ARIMA model is appropriate, because the data is not stationary, and the differenced data of order 1 and order 2 are not stationary. ARIMA models assume stationarity. So I'm going to go back to Exponential smoothing.
+
