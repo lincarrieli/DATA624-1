@@ -1,0 +1,28 @@
+---
+title: "draft_proj1_210622"
+author: "Daniel Moscoe"
+date: "6/22/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(fpp2)
+library(readxl)
+```
+
+```{r}
+xlsx_path <- "raw_data.xlsx"
+raw <- readxl::read_xlsx(xlsx_path)
+summary(raw)
+```
+
+```{r}
+
+raw %>%
+#  filter(S06Var07 < 50) %>%
+  ggplot(aes(x = SeriesInd, y = S06Var05)) +
+    geom_line()
+```
+
