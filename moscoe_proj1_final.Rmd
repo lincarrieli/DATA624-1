@@ -1,0 +1,305 @@
+---
+title: "DATA624 Project 1"
+author: "Daniel Moscoe"
+date: "6/24/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(fpp2)
+library(readxl)
+```
+
+```{r}
+xlsx_path <- "raw_data.xlsx"
+raw <- readxl::read_xlsx(xlsx_path)
+```
+
+[This file examines variables S05Var03, S06Var05, and S06Var07.]
+
+## Exploratory Visualization
+
+This section contains initial visualizations of S05Var03, S06Var05, and S06Var07. These visualizations provide the basis for initial commentary and suggest a roadmap for the analysis that comprises the remainder of this file.
+
+```{r}
+raw %>%
+  ggplot(aes(x = SeriesInd, y = S05Var03)) +
+  geom_line() +
+  ggtitle("S05Var03")
+
+raw %>%
+  ggplot(aes(x = SeriesInd, y = S06Var05)) +
+  geom_line() +
+  ggtitle("S06Var05")
+
+raw %>%
+  ggplot(aes(x = SeriesInd, y = S06Var07)) +
+  geom_line() +
+  ggtitle("S06Var07")
+```
+
+All three variables closely resemble a random walk. The variables from group S06 closely resemble each other. None of the variables exhibits obvious seasonality or cyclicity. None of the variables is stationary. The group S06 variables appear to trend upward after `SeriesInd` = 41250, but because the data are compressed toward the bottom of the grid due to a small number of extreme outliers, it's hard to be sure at this early stage. For all three variables, variability in the data does not appear to depend on the level of the data.
+
+Examining the numeric data reveals gaps in the `SeriesInd` column. These gaps mostly occur at regular intervals, and could represent weekends and holidays in a calendar.
+
+Do the gaps represent a pause in the process that generated this data? Or do the gaps conceal unknown values in the time series? If the average change in value across these gaps is larger than the typical difference between a value and its lag, then there's reason to think these gaps represent missing data. If the average change across these gaps is approximately equal to the typical change from one value to the next, then the gaps probably represent a pause in the data-generating process.
+
+Computing the average squared difference across gaps for S06Var05:
+```{r}
+SeriesInd.ts <- ts(raw$SeriesInd)
+gaps <- diff(SeriesInd.ts) > 1
+gaps <- c(FALSE, gaps)
+gaps.df <- data.frame("SeriesInd" = raw$SeriesInd, "AfterGap" = gaps)
+
+gaps.df <- gaps.df %>%
+  mutate("S06Var05" = raw$S06Var05, "S06Var05.diff" = raw$S06Var05 - lag(raw$S06Var05))
+
+sqdiff_across_gaps_S06Var05 <- gaps.df %>%
+  filter(AfterGap) %>%
+  filter(S06Var05.diff > -50) %>%
+  select(S06Var05.diff)
+
+sqdiff_across_gaps_S06Var05 <- sqdiff_across_gaps_S06Var05^2
+sqdiff_across_gaps_S06Var05 <-
+  mean(sqdiff_across_gaps_S06Var05$S06Var05.diff)
+```
+
+Computing the average squared difference between successive entries for S06Var05:
+```{r}
+sqdiff_across_all <- gaps.df %>%
+  filter(abs(S06Var05.diff) < 50) %>%
+  select(S06Var05.diff)
+
+sqdiff_across_all <- sqdiff_across_all^2
+sqdiff_across_all <- mean(sqdiff_across_all$S06Var05.diff)
+```
+
+The mean square difference between values across gaps is 0.376, and the mean square difference between all successive values is 0.326. These values are close enough to suggest that missing values in the `SeriesInd` column represent a pause in the data-generating process, rather than missing data. As a result, we can treat this data as if all the measurements are consecutive, with no missing values.
+
+While it's not known what process generated these data, the levels and behavior of the data are similar to those of stock prices. For the purpose of this report, I'll regard each value as a closing stock price of a different company, and I'll regard the `time series`SeriesInd` values as counting days. Restarting the time series at Day = 0 and dropping outliers from the group S06 data gives us the following:
+
+```{r}
+RST.ts <- ts(raw$S05Var03)
+
+UVW.ts <- raw %>%
+  filter(S06Var05 < 100) %>%
+  select(S06Var05) %>%
+  ts()
+
+XYZ.ts <- raw %>%
+  filter(S06Var07 < 100) %>%
+  select(S06Var07) %>%
+  ts()
+
+autoplot(RST.ts) +
+  xlab("Day") +
+  ylab("Closing Price (USD)") +
+  ggtitle("Daily Closing Price of RST")
+
+autoplot(UVW.ts) +
+  xlab("Day") +
+  ylab("Closing Price (USD)") +
+  ggtitle("Daily Closing Price of UVW")
+
+autoplot(XYZ.ts) +
+  xlab("Day") +
+  ylab("Closing Price (USD)") +
+  ggtitle("Daily Closing Price of XYZ")
+```
+
+How similar are the time series representing UVW and XYZ?
+
+```{r}
+autoplot(UVW.ts-XYZ.ts) +
+  xlab("Day") +
+  ylab("Difference in price (USD)") +
+  ggtitle("Daily difference in prices, UVW and XYZ")
+```
+
+Differences in price are white noise centered at zero. The range of these differences is small compared to the level of each variable. For this reason, I'll restrict the analysis to only UVW, and then apply the best model for UVW to XYZ as well.
+
+## Simple forecasts
+
+Because "a naive forecast is optimal when data follow a random walk" (HA 3.1), I compute some simple forecasts for each variable before performing more complex analysis. The performance of these simple models will provide a benchmark for performance of more sophisticated models. In the event of a tie, I'll favor these simpler models.
+
+```{r}
+RST_rwf <- rwf(RST.ts, h = 140)
+UVW_rwf <- rwf(UVW.ts, h = 140)
+XYZ_rwf <- rwf(XYZ.ts, h = 140)
+RST_drwf <- rwf(RST.ts, h = 140, drift = TRUE)
+UVW_drwf <- rwf(UVW.ts, h = 140, drift = TRUE)
+XYZ_drwf <- rwf(XYZ.ts, h = 140, drift = TRUE)
+RST_mean <- meanf(RST.ts, h = 140)
+UVW_mean <- meanf(UVW.ts, h = 140)
+XYZ_mean <- meanf(XYZ.ts, h = 140)
+
+autoplot(RST.ts) +
+  autolayer(RST_rwf, series = "Naive", PI = FALSE) +
+  autolayer(RST_drwf, series = "Drift", PI = FALSE) +
+  autolayer(RST_mean, series = "Mean", PI = FALSE)
+
+autoplot(UVW.ts) +
+  autolayer(UVW_rwf, series = "Naive", PI = FALSE) +
+  autolayer(UVW_drwf, series = "Drift", PI = FALSE) +
+  autolayer(UVW_mean, series = "Mean", PI = FALSE)
+```
+
+Evaluating performance of simple models using cross-validation and RMSE:
+```{r}
+RST_rmse_rwf_nodrift <- tsCV(RST.ts, rwf, drift = FALSE, h = 1)
+RST_rmse_rwf_nodrift <- sqrt(mean(RST_rmse_rwf_nodrift^2, na.rm = TRUE))
+
+RST_rmse_rwf_drift <- tsCV(RST.ts, rwf, drift = TRUE, h = 1)
+RST_rmse_rwf_drift <- sqrt(mean(RST_rmse_rwf_drift^2, na.rm = TRUE))
+
+RST_rmse_meanf <- tsCV(RST.ts, meanf, h = 1)
+RST_rmse_meanf <- sqrt(mean(RST_rmse_meanf^2, na.rm = TRUE))
+
+UVW_rmse_rwf_nodrift <- tsCV(UVW.ts, rwf, drift = FALSE, h = 1)
+UVW_rmse_rwf_nodrift <- sqrt(mean(UVW_rmse_rwf_nodrift^2, na.rm = TRUE))
+
+UVW_rmse_rwf_drift <- tsCV(UVW.ts, rwf, drift = TRUE, h = 1)
+UVW_rmse_rwf_drift <- sqrt(mean(UVW_rmse_rwf_drift^2, na.rm = TRUE))
+
+UVW_rmse_meanf <- tsCV(UVW.ts, meanf, h = 1)
+UVW_rmse_meanf <- sqrt(mean(UVW_rmse_meanf^2, na.rm = TRUE))
+```
+
+For both RST and UVW, the best-performing model is the random walk forecast with no drift. For RST, RMSE = 0.9037. For UVW, RMSE = 0.5712.
+
+## Exponential smoothing
+
+Below, I fit a simple exponential smoothing method.
+
+```{r R.options = list(max.print = 15)}
+RST_ses <- ses(RST.ts, h = 140)
+summary(RST_ses)
+```
+
+The optimized simple exponential smoothing method computed $\alpha = 0.9999$, making this method almost indistinguishable from the random-walk forecast. It offers a tiny improvement in performance when measured as RMSE, but this improvement is not sufficient to justify a more complex model.
+
+```{r R.options = list(max.print = 15)}
+UVW_ses <- ses(UVW.ts, h = 140)
+summary(UVW_ses)
+```
+
+For UVW, $\alpha = 0.8676$, indicating that optimal simple exponential smoothing does take some account of values earlier than lag-1. Similar to SES's performance with RST, SES offers only a very small performance gain over the random-walk forecast. This small gain is not sufficient to justify a more complex model.
+
+Does allowing for drift and damping improve the performance of the exponential smoothing models?
+
+```{r R.options = list(max.print = 15)}
+RST_holt <- holt(RST.ts, h = 140, damped = TRUE)
+UVW_holt <- holt(UVW.ts, h = 140, damped = TRUE)
+summary(RST_holt)
+summary(UVW_holt)
+```
+
+For the RST series, an exponential smoothing model with damping and drift performs marginally better than the random walk forecast with no drift. For this data, the optimal choice for $\alpha$ is almost 1, indicating that forecast values are almost entirely dependent only on their lag-1. $\phi = 0.8$. This is a low value that rapidly damps forecasts. Together, the high value of $\alpha$ and the low value of $\phi$ suggest that exponential smoothing with damping and drift don't offer much additional insight above the simple random walk forecast.
+
+The parameters for the optimal model for the UVW data are somewhat different, with $\alpha = 0.8679$ and $\phi = 0.9733$. This suggests that values earlier than lag-1 carry some importance in generating forecasts, and that damping at a more gradual pace is optimal. Still, RMSE improves only marginally with this more complex model. Simple random walk forecasts with no drift are still the top contenders for all three variables under examination.
+
+## ARIMA models
+
+ARIMA models are generally restricted to stationary data. The most common technique for producing stationary data from a trended dataset such as this one is to perform first-differencing. We then perform a Box-Ljung test on the differenced data to determine whether the result is stationary.
+
+Differenced data:
+
+```{r}
+autoplot(diff(RST.ts)) +
+  xlab("Day") +
+  ylab("Day-over-day difference in closing price (USD)") +
+  ggtitle("First-differenced closing prices for RST")
+
+autoplot(diff(UVW.ts)) +
+  xlab("Day") +
+  ylab("Day-over-day difference in closing price (USD)") +
+  ggtitle("First-differenced closing prices for UVW")
+```
+
+For both variables, this data does appear to be stationary-- it has mean near zero, and its variability does not appear to change over time. The values appear to be random. What do the ACF plots show?
+
+```{r}
+autoplot(Acf(diff(RST.ts))) +
+  ggtitle("ACF plot for RST")
+autoplot(Acf(diff(UVW.ts))) +
+  ggtitle("ACF plot for UVW")
+```
+
+The ACF plots shows many significant lags, which suggest the differenced data may not be stationary.
+
+```{r}
+autoplot(Pacf(diff(RST.ts))) +
+  ggtitle("PACF plot for RST")
+autoplot(Pacf(diff(UVW.ts))) +
+  ggtitle("PACF plot for UVW")
+```
+
+The PACF plots also show several significant values, further casting doubt on the stationarity of this data. A portmanteau test confirms our suspicion:
+
+```{r}
+Box.test(diff(RST.ts, differences = 2), type = 'Ljung-Box')
+Box.test(diff(UVW.ts, differences = 2), type = 'Ljung-Box')
+```
+
+The Box-Ljung test confirms that the data should not be considered  stationary. Even after two rounds of differencing, the null hypothesis that each observation is independent of its lag is rejected, with a p-value near 0.
+
+Let's fit an ARIMA model anyway. Since the visual appearance of stationarity is so striking, it might be that the data is close enough to satisfying the assumptions that the model still proves useful.
+
+```{r}
+RST_arima <- auto.arima(RST.ts)
+UVW_arima <- auto.arima(UVW.ts)
+summary(RST_arima)
+summary(UVW_arima)
+```
+
+For RST, RMSE for the ARIMA(0,1,2) model is 0.8963. For UVW, RMSE for ARIMA(2,1,2) is 0.5637. As with the damped and trended exponential smoothing methods, these models give marginal improvements in RMSE. However, these small improvements are not sufficient to justify their use as forecasting models, since they're complicated relative to simple forecasting methods.
+
+Had ARIMA models provided a greater reduction in RMSE, then we would proceed from here to an analysis of residuals.
+
+## Conclusion
+
+For the variables RST.ts (named S05Var03 in the original template), UVW.ts (S06Var05), and XYZ.ts (S06Var07), the best forecasting model is a random walk forecast without drift. The forecast value for all future times is the most recent value of the time series. As time extends into the future, prediction intervals for these forecasts become wider:
+
+```{r}
+autoplot(RST.ts) +
+  autolayer(RST_rwf, series = "Naive", PI = TRUE) +
+  xlab("Day") +
+  ylab("Closing price (USD)") +
+  ggtitle("Forecasts and prediction intervals for RST")
+```
+
+```{r}
+autoplot(UVW.ts) +
+  autolayer(UVW_rwf, series = "Naive", PI = TRUE) +
+  xlab("Day") +
+  ylab("Closing price (USD)") +
+  ggtitle("Forecasts and prediction intervals for UVW")
+```
+
+```{r}
+autoplot(XYZ.ts) +
+  autolayer(XYZ_rwf, series = "Naive", PI = TRUE) +
+  xlab("Day") +
+  ylab("Closing price (USD)") +
+  ggtitle("Forecasts and prediction intervals for XYZ")
+```
+
+This is consistent with reasonable expectations for stock market price data, which are notoriously resistant to time series forecasting methods. If we had more information about this data-- such as information about the process that generated it, or historical data further into the past-- it might have been possible to take better advantage of methods incorporating trend. Over the relatively short horizon of this data set, though, long-run trends that appear in stock prices were not wholly evident.
+
+For all future times, the forecast values for each variable are given below.
+
+```{r R.options = list(max.print = 15)}
+#Forecast value for RST.ts (S05Var03):
+RST_rwf_fc <- forecast(RST_rwf, h = 140)
+print(RST_rwf_fc)
+
+#Forecast value for RST.ts (S06Var05):
+UVW_rwf_fc <- forecast(UVW_rwf, h = 140)
+print(UVW_rwf_fc)
+
+#Forecast value for RST.ts (S06Var07):
+XYZ_rwf_fc <- forecast(XYZ_rwf, h = 140)
+print(XYZ_rwf_fc)
+```
