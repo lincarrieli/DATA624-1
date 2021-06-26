@@ -23,11 +23,6 @@ autoplot(s01_v01_ts)
 autoplot(s01_v02_ts)
 autoplot(s02_v02_ts)
 
-# Try random walk
-s01_v01_rwf <- rwf(s01_v01_ts, h = 140)
-s01_v02_rwf <- rwf(s01_v02_ts, h = 140)
-s02_v02_rwf <- rwf(s02_v02_ts, h = 140)
-
 # Check performance of random walk
 rwf_nodrift <- tsCV(s01_v01_ts, rwf, drift = FALSE, h = 1)
 rmse_rwf_nodrift <- sqrt(mean(rwf_nodrift^2, na.rm = TRUE))
@@ -65,12 +60,12 @@ checkresiduals(s01_v01_arima)
 #######################
 
 # Check performance of random walk
-rmse_rwf_nodrift <- tsCV(s01_v02_ts, rwf, drift = FALSE, h = 1)
-rmse_rwf_nodrift <- sqrt(mean(rmse_rwf_nodrift^2, na.rm = TRUE))
-rmse_rwf_drift <- tsCV(s01_v02_ts, rwf, drift = TRUE, h = 1)
-rmse_rwf_drift <- sqrt(mean(rmse_rwf_drift^2, na.rm = TRUE))
-rmse_meanf <- tsCV(s01_v02_ts, meanf, h = 1)
-rmse_meanf <- sqrt(mean(rmse_meanf^2, na.rm = TRUE))
+rwf_nodrift <- tsCV(s01_v02_ts, rwf, drift = FALSE, h = 1)
+rmse_rwf_nodrift <- sqrt(mean(rwf_nodrift^2, na.rm = TRUE))
+rwf_drift <- tsCV(s01_v02_ts, rwf, drift = TRUE, h = 1)
+rmse_rwf_drift <- sqrt(mean(rwf_drift^2, na.rm = TRUE))
+meanf <- tsCV(s01_v02_ts, meanf, h = 1)
+rmse_meanf <- sqrt(mean(meanf^2, na.rm = TRUE))
 
 # The random walk with no drift has the lowest rmse
 
@@ -114,12 +109,12 @@ checkresiduals(log_s01_v02_arima)
 #######################
 
 # Check performance of random walk
-rmse_rwf_nodrift <- tsCV(s02_v02_ts, rwf, drift = FALSE, h = 1)
-rmse_rwf_nodrift <- sqrt(mean(rmse_rwf_nodrift^2, na.rm = TRUE))
-rmse_rwf_drift <- tsCV(s02_v02_ts, rwf, drift = TRUE, h = 1)
-rmse_rwf_drift <- sqrt(mean(rmse_rwf_drift^2, na.rm = TRUE))
-rmse_meanf <- tsCV(s02_v02_ts, meanf, h = 1)
-rmse_meanf <- sqrt(mean(rmse_meanf^2, na.rm = TRUE))
+rwf_nodrift <- tsCV(s02_v02_ts, rwf, drift = FALSE, h = 1)
+rmse_rwf_nodrift <- sqrt(mean(rwf_nodrift^2, na.rm = TRUE))
+rwf_drift <- tsCV(s02_v02_ts, rwf, drift = TRUE, h = 1)
+rmse_rwf_drift <- sqrt(mean(rwf_drift^2, na.rm = TRUE))
+meanf <- tsCV(s02_v02_ts, meanf, h = 1)
+rmse_meanf <- sqrt(mean(meanf^2, na.rm = TRUE))
 
 # The random walk with no drift has the lowest rmse
 
@@ -161,6 +156,6 @@ checkresiduals(log_s02_v02_arima)
 # This produces by far the best fit
 
 # Forecasts
-s01_v01_forecast <- forecast(s01_v01_rwf, h = 140)
+s01_v01_forecast <- rwf(s01_v01_ts, h = 140)
 s01_v02_forecast <- forecast(log_s01_v02_arima, h = 140)
 s02_v02_forecast <- forecast(log_s02_v02_arima, h = 140)
