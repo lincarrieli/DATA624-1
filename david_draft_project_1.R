@@ -157,3 +157,10 @@ checkresiduals(log_s02_v02_arima)
 s01_v01_forecast <- rwf(s01_v01_ts, h = 140)
 s01_v02_forecast <- forecast(s01_v02_arima, h = 140)
 s02_v02_forecast <- forecast(s02_v02_arima, h = 140)
+
+autoplot(s01_v01_ts) +
+  autolayer(s01_v01_forecast)
+autoplot(s01_v02_ts) +
+  autolayer(s01_v02_forecast)
+autoplot(s02_v02_ts) +
+  autolayer(s02_v02_forecast)
