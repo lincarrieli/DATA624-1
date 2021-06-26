@@ -23,62 +23,134 @@ autoplot(s01_v01_ts)
 autoplot(s01_v02_ts)
 autoplot(s02_v02_ts)
 
-# Try a holt es model (since there is clearly a trend)
-fc <- holt(s01_v01_ts, h = 140)
-autoplot(fc)
+# Check performance of random walk
+rmse_rwf_nodrift <- tsCV(s01_v01_ts, rwf, drift = FALSE, h = 1)
+rmse_rwf_nodrift <- sqrt(mean(rmse_rwf_nodrift^2, na.rm = TRUE))
+rmse_rwf_drift <- tsCV(s01_v01_ts, rwf, drift = TRUE, h = 1)
+rmse_rwf_drift <- sqrt(mean(rmse_rwf_drift^2, na.rm = TRUE))
+rmse_meanf <- tsCV(s01_v01_ts, meanf, h = 1)
+rmse_meanf <- sqrt(mean(rmse_meanf^2, na.rm = TRUE))
+
+# The random walk with no drift has the lowest rmse
+
+# Try ses
+s01_v01_ses <- ses(s01_v01_ts, h = 140)
+summary(s01_v01_ses)
+
+# The rmse is essentially the same as a random walk with no drift
+
+# Try a holt model
+s01_v01_holt <- holt(s01_v01_ts, h = 140)
+summary(s01_v01_holt)
+
+# The rmse is still the same
+
+# Checking arima
+s01_v01_ts %>% diff() %>% ggtsdisplay(main="")
+s01_v01_ts %>% diff() %>% ur.kpss() %>% summary()
+
+s01_v01_arima <- auto.arima(s01_v01_ts, seasonal = FALSE,
+                            stepwise = FALSE, approximation = FALSE)
+
+summary(s01_v01_arima)
+checkresiduals(s01_v01_arima)
+
+# The rmse is slightly better with the arima model.
 
 #######################
 
-# Checking for stationarity. It looks like after a single difference, the data is stationary (test statistic is much smaller than 1% of critical value)
+# Check performance of random walk
+rmse_rwf_nodrift <- tsCV(s01_v02_ts, rwf, drift = FALSE, h = 1)
+rmse_rwf_nodrift <- sqrt(mean(rmse_rwf_nodrift^2, na.rm = TRUE))
+rmse_rwf_drift <- tsCV(s01_v02_ts, rwf, drift = TRUE, h = 1)
+rmse_rwf_drift <- sqrt(mean(rmse_rwf_drift^2, na.rm = TRUE))
+rmse_meanf <- tsCV(s01_v02_ts, meanf, h = 1)
+rmse_meanf <- sqrt(mean(rmse_meanf^2, na.rm = TRUE))
+
+# The random walk with no drift has the lowest rmse
+
+# Try ses
+s01_v02_ses <- ses(s01_v02_ts, h = 140)
+summary(s01_v02_ses)
+
+# The rmse is much better with ses
+
+# Try a holt model
+s01_v02_holt <- holt(s01_v02_ts, h = 140)
+summary(s01_v02_holt)
+
+# The rmse is still better with ses
+
+# Checking arima
 s01_v02_ts %>% diff() %>% ggtsdisplay(main="")
 s01_v02_ts %>% diff() %>% ur.kpss() %>% summary()
 
-# Just trying an arima fit real quick to see how it looks (Since data is stationary)
-(fit <- auto.arima(s01_v02_ts, seasonal = FALSE,
-                   stepwise = FALSE, approximation = FALSE))
+s01_v02_arima <- auto.arima(s01_v02_ts, seasonal = FALSE,
+                            stepwise = FALSE, approximation = FALSE)
 
-checkresiduals(fit)
+summary(s01_v02_arima)
+checkresiduals(s01_v02_arima)
 
-fit %>% forecast(h = 140) %>% autoplot()
+# This is the lowest rmse
 
-# What happens if I log the series?
-log_s01_v02_ts <- log(s01_v02_ts)
+# Try logging the data
+log_s01_v01_ts <- log(s01_v02_ts)
+log_s01_v01_ts %>% diff() %>% ggtsdisplay(main="")
+log_s01_v01_ts %>% diff() %>% ur.kpss() %>% summary()
 
-log_s01_v02_ts %>% diff() %>% ggtsdisplay(main="")
-log_s01_v02_ts %>% diff() %>% ur.kpss() %>% summary()
+log_s01_v02_arima <- auto.arima(log_s01_v01_ts, seasonal = FALSE,
+                            stepwise = FALSE, approximation = FALSE)
 
-# Just trying an arima fit real quick to see how it looks (Since data is stationary)
-(fit <- auto.arima(log_s01_v02_ts, seasonal = FALSE,
-                    stepwise = FALSE, approximation = FALSE))
+summary(log_s01_v02_arima)
+checkresiduals(log_s01_v02_arima)
 
-checkresiduals(fit)
+# This produces by far the best fit
 
-fit %>% forecast(h = 140) %>% autoplot()
+#######################
 
-###################
+# Check performance of random walk
+rmse_rwf_nodrift <- tsCV(s02_v02_ts, rwf, drift = FALSE, h = 1)
+rmse_rwf_nodrift <- sqrt(mean(rmse_rwf_nodrift^2, na.rm = TRUE))
+rmse_rwf_drift <- tsCV(s02_v02_ts, rwf, drift = TRUE, h = 1)
+rmse_rwf_drift <- sqrt(mean(rmse_rwf_drift^2, na.rm = TRUE))
+rmse_meanf <- tsCV(s02_v02_ts, meanf, h = 1)
+rmse_meanf <- sqrt(mean(rmse_meanf^2, na.rm = TRUE))
 
-# Checking for stationarity. It looks like after a single difference, the data is stationary (test statistic is much smaller than 1% of critical value)
+# The random walk with no drift has the lowest rmse
+
+# Try ses
+s02_v02_ses <- ses(s02_v02_ts, h = 140)
+summary(s02_v02_ses)
+
+# The rmse is much better with ses
+
+# Try a holt model
+s02_v02_holt <- holt(s02_v02_ts, h = 140)
+summary(s02_v02_holt)
+
+# The rmse is still better with ses
+
+# Checking arima
 s02_v02_ts %>% diff() %>% ggtsdisplay(main="")
 s02_v02_ts %>% diff() %>% ur.kpss() %>% summary()
 
-# Just trying an arima fit real quick to see how it looks (Since data is stationary)
-(fit <- auto.arima(s02_v02_ts, seasonal = FALSE,
-                   stepwise = FALSE, approximation = FALSE))
+s02_v02_arima <- auto.arima(s02_v02_ts, seasonal = FALSE,
+                            stepwise = FALSE, approximation = FALSE)
 
-checkresiduals(fit)
+summary(s02_v02_arima)
+checkresiduals(s02_v02_arima)
 
-fit %>% forecast(h = 140) %>% autoplot()
+# This is the lowest rmse
 
-# What happens if I log the series?
-log_s02_v02_ts <- log(s01_v02_ts)
+# Try logging the data
+log_s02_v01_ts <- log(s02_v02_ts)
+log_s02_v01_ts %>% diff() %>% ggtsdisplay(main="")
+log_s02_v01_ts %>% diff() %>% ur.kpss() %>% summary()
 
-log_s02_v02_ts %>% diff() %>% ggtsdisplay(main="")
-log_s02_v02_ts %>% diff() %>% ur.kpss() %>% summary()
+log_s02_v02_arima <- auto.arima(log_s02_v01_ts, seasonal = FALSE,
+                                stepwise = FALSE, approximation = FALSE)
 
-# Just trying an arima fit real quick to see how it looks (Since data is stationary)
-(fit <- auto.arima(log_s02_v02_ts, seasonal = FALSE,
-                   stepwise = FALSE, approximation = FALSE))
+summary(log_s02_v02_arima)
+checkresiduals(log_s02_v02_arima)
 
-checkresiduals(fit)
-
-fit %>% forecast(h = 140) %>% autoplot()
+# This produces by far the best fit
