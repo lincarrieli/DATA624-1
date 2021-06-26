@@ -1,7 +1,5 @@
 library(ggplot2)
-library(mice)
 library(forecast)
-library(seasonal)
 library(urca)
 
 data <- read.csv("https://raw.githubusercontent.com/dmoste/DATA624/main/raw_data.csv", header = TRUE)
@@ -157,5 +155,5 @@ checkresiduals(log_s02_v02_arima)
 
 # Forecasts
 s01_v01_forecast <- rwf(s01_v01_ts, h = 140)
-s01_v02_forecast <- forecast(log_s01_v02_arima, h = 140)
-s02_v02_forecast <- forecast(log_s02_v02_arima, h = 140)
+s01_v02_forecast <- forecast(s01_v02_arima, h = 140)
+s02_v02_forecast <- forecast(s02_v02_arima, h = 140)
