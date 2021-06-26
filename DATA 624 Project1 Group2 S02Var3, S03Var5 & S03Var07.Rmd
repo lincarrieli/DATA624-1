@@ -1,0 +1,387 @@
+---
+title: "DATA 624 Project data test"
+author: "Samuel I Kigamba"
+date: "June 23, 2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r, message=FALSE, warning=FALSE}
+library(tidyverse)
+library(fpp2)
+library(readxl)
+library(tseries)
+```
+
+# This analysis covers "S02Var03" "S03Var05" & "S03Var07"
+
+```{r}
+df <- read.csv("https://raw.githubusercontent.com/dmoste/DATA624/main/raw_data.csv", header = TRUE)
+head(df)
+
+```
+
+```{r}
+raw = df[c("SeriesInd", "S02Var03", "S03Var05", "S03Var07")]
+summary(raw)
+
+```
+
+S03VAr05 and S03VAr07 looks almost identical from the summary above.
+
+Visualize the data and look for seasonality or trend within the different data sets of data.
+
+```{r}
+
+# Data under S02var03 has an outlier which we eliminate before creating visualizations.
+raw %>%
+  filter(S02Var03 < 20) %>%
+  ggplot(aes(x = SeriesInd, y = S02Var03)) +
+    geom_line() +
+  ggtitle("S02Var03")
+
+raw %>%
+  ggplot(aes(x = SeriesInd, y = S03Var05)) +
+    geom_line() +
+  ggtitle("S03Var05")
+
+raw %>%
+  ggplot(aes(x = SeriesInd, y = S03Var07)) +
+    geom_line() +
+  ggtitle("S03Var07")
+
+```
+
+
+
+```{r}
+# Convert to time series
+
+SeriesInd.ts <- ts(raw$SeriesInd)
+X.ts <- na.remove(ts(raw$S02Var03, frequency = 253))
+Y.ts <- na.remove(ts(raw$S03Var05, frequency = 253))
+Z.ts <- na.remove(ts(raw$S03Var07, frequency = 253))
+
+```
+
+Decompose data and check for trend and seasonality
+
+```{r}
+X.ts %>%
+  decompose(type="multiplicative")%>%
+  autoplot() + xlab("Time") +
+  ggtitle("Decomposition of S02Var03")
+
+Y.ts %>%
+  decompose(type="multiplicative") %>%
+  autoplot() + xlab("Time") +
+  ggtitle("Decomposition of S03Var05")
+
+
+Z.ts %>%
+  decompose(type="multiplicative") %>%
+  autoplot() + xlab("Time") +
+  ggtitle("Decomposition of S03Var07")
+
+```
+
+None of the three variables exhibits obvious seasonality or cyclicity. S02Var03 has an otlier that seems to compress the graph downwards.
+
+
+Evaluating performance of simple models using cross-validation and RMSE:
+
+```{r}
+X_rmse_rwf_nodrift <- tsCV(X.ts, rwf, drift = FALSE, h = 1)
+X_rmse_rwf_nodrift <- sqrt(mean(X_rmse_rwf_nodrift^2, na.rm = TRUE))
+X_rmse_rwf_drift <- tsCV(X.ts, rwf, drift = TRUE, h = 1)
+X_rmse_rwf_drift <- sqrt(mean(X_rmse_rwf_drift^2, na.rm = TRUE))
+X_rmse_meanf <- tsCV(X.ts, meanf, h = 1)
+X_rmse_meanf <- sqrt(mean(X_rmse_meanf^2, na.rm = TRUE))
+
+Y_rmse_rwf_nodrift <- tsCV(Y.ts, rwf, drift = FALSE, h = 1)
+Y_rmse_rwf_nodrift <- sqrt(mean(Y_rmse_rwf_nodrift^2, na.rm = TRUE))
+Y_rmse_rwf_drift <- tsCV(Y.ts, rwf, drift = TRUE, h = 1)
+Y_rmse_rwf_drift <- sqrt(mean(Y_rmse_rwf_drift^2, na.rm = TRUE))
+Y_rmse_meanf <- tsCV(Y.ts, meanf, h = 1)
+Y_rmse_meanf <- sqrt(mean(Y_rmse_meanf^2, na.rm = TRUE))
+
+Z_rmse_rwf_nodrift <- tsCV(Z.ts, rwf, drift = FALSE, h = 1)
+Z_rmse_rwf_nodrift <- sqrt(mean(Z_rmse_rwf_nodrift^2, na.rm = TRUE))
+Z_rmse_rwf_drift <- tsCV(Z.ts, rwf, drift = TRUE, h = 1)
+Z_rmse_rwf_drift <- sqrt(mean(Z_rmse_rwf_drift^2, na.rm = TRUE))
+Z_rmse_meanf <- tsCV(Z.ts, meanf, h = 1)
+Z_rmse_meanf <- sqrt(mean(Z_rmse_meanf^2, na.rm = TRUE))
+
+```
+
+```{r}
+
+X_rmse_rwf_nodrift
+X_rmse_rwf_drift
+X_rmse_meanf
+
+Y_rmse_rwf_nodrift
+Y_rmse_rwf_drift
+Y_rmse_meanf
+
+Z_rmse_rwf_nodrift
+Z_rmse_rwf_drift
+Z_rmse_meanf
+
+```
+
+From the RMSE analysis of three models, namely: rwf with no drift, rmf with draft and mean, the rfw is the slightly better performing model.
+
+We will use time series cross-validation to compare the one-step forecast accuracy using Simple Exponential Smoothing, Holts Linear trend method and Holds dumped trend methods.
+
+# S02Var03
+
+```{r}
+X1 <- tsCV(X.ts, ses, h=140)
+X2 <- tsCV(X.ts, holt, h=140)
+X3 <- tsCV(X.ts, holt, damped=TRUE, h=140)
+
+print("S02Var03")
+print("MSE")
+
+# Compare MSE:
+
+print(c("ses:", mean(X1^2, na.rm=TRUE)))
+
+print(c("Holt:", mean(X2^2, na.rm=TRUE)))
+
+print(c("Holt damped:", mean(X3^2, na.rm=TRUE)))
+
+
+print("MAE")
+# Compare MAE:
+
+print(c("ses:", mean(abs(X1), na.rm=TRUE)))
+
+print(c("Holt:", mean(abs(X2), na.rm=TRUE)))
+
+print(c("Holt damped:", mean(abs(X3), na.rm=TRUE)))
+
+```
+
+
+Simple Exponential Smoothing method is best whether you compare MAE or MSE values. 
+So we will proceed with using the SES method and apply it to the whole data set to get forecasts for future periods.
+We will also include the three
+
+
+```{r}
+
+X.ts <- raw %>%
+  filter(S02Var03 < 20) %>%
+  select(S02Var03) %>%
+  ts()
+
+# Random walk forecasts without drift
+X_rwf <- rwf(X.ts, h = 140)
+#X_drwf <- rwf(X.ts, h = 140, drift = TRUE)
+#X_mean <- meanf(X.ts, h = 140)
+
+# Exponential Smoothing forecast
+X_ses <- ses(X.ts, h = 140)
+
+autoplot(X.ts) +
+  autolayer(X_rwf, series = "Naive", PI = FALSE) +
+  #autolayer(X_drwf, series = "Drift", PI = FALSE) +
+  #autolayer(X_mean, series = "Mean", PI = FALSE) +
+  autolayer(X_ses, series = "Ses", PI = FALSE)
+
+```
+
+Both simple exponential smoothing and naive random walk methods provide identical forcasts.
+
+# Exponential Smoothing
+
+
+```{r}
+
+X_ses <- ses(X.ts, h = 140)
+X_ses[["model"]]
+
+```
+
+The value of alpha of $\alpha = 0.9999$ is very close to one, showing that the level reacts strongly to each new observation. This also makes the ses method almost indistinguishable fom random walk forecast.
+
+
+```{r}
+
+# Estimate parameters
+
+summary(X_ses)
+
+```
+
+
+
+# S03Var05
+
+```{r}
+
+Y1 <- tsCV(Y.ts, ses, h=140)
+Y2 <- tsCV(Y.ts, holt, h=140)
+Y3 <- tsCV(Y.ts, holt, damped=TRUE, h=140)
+
+
+print("S03Var05")
+print("MSE")
+
+# Compare MSE:
+
+print(c("ses:", mean(Y1^2, na.rm=TRUE)))
+
+print(c("Holt:", mean(Y2^2, na.rm=TRUE)))
+
+print(c("Holt damped:", mean(Y3^2, na.rm=TRUE)))
+
+
+print("MAE")
+
+# Compare MAE:
+
+print(c("ses:", mean(abs(Y1), na.rm=TRUE)))
+
+print(c("Holt:", mean(abs(Y2), na.rm=TRUE)))
+
+print(c("Holt damped:", mean(abs(Y3), na.rm=TRUE)))
+
+```
+
+
+Simple Exponential Smoothing method is best whether you compare MSE values.
+Holt damped is slightly better than ses for MAE value but the improvement is not high enough to justify the added complexity. 
+So we will proceed with using the SES method and apply it to the whole data set to get forecasts for future periods.
+
+
+```{r}
+
+# Random walk forecasts without drift
+Y_rwf <- rwf(Y.ts, h = 140)
+#Y_drwf <- rwf(Y.ts, h = 140, drift = TRUE)
+#Y_mean <- meanf(Y.ts, h = 140)
+
+# Exponential Smoothing Forecast
+Y_ses <- ses(Y.ts, h = 140)
+
+autoplot(Y.ts) +
+  autolayer(Y_rwf, series = "Naive", PI = FALSE) +
+  #autolayer(Y_drwf, series = "Drift", PI = FALSE) +
+  #autolayer(Y_mean, series = "Mean", PI = FALSE) +
+  autolayer(Y_ses, series = "Ses", PI = FALSE)
+
+```
+
+Both simple exponential smoothing and naive random walk methods provide identical forcasts.
+
+
+# Exponential Smoothing: Check for alpha
+
+```{r}
+
+Y_ses <- ses(Y.ts, h = 140)
+Y_ses[["model"]]
+
+```
+
+The value of alpha of $\alpha = 0.8471$ is very close to one, showing that the level reacts strongly to each new observation. This also makes the ses method almost indistinguishable fom random walk forecast.
+
+
+```{r}
+
+# Estimate parameters
+
+summary(Y_ses)
+
+```
+
+
+
+
+# S03Var07
+
+```{r}
+
+Z1 <- tsCV(Z.ts, ses, h=140)
+Z2 <- tsCV(Z.ts, holt, h=140)
+Z3 <- tsCV(Z.ts, holt, damped=TRUE, h=140)
+
+
+print("S03Var07")
+print("MSE")
+
+# Compare MSE:
+
+print(c("ses:", mean(Z1^2, na.rm=TRUE)))
+
+print(c("Holt:", mean(Z2^2, na.rm=TRUE)))
+
+print(c("Holt damped:", mean(Z3^2, na.rm=TRUE)))
+
+
+print("MAE")
+# Compare MAE:
+
+print(c("ses:", mean(abs(Z1), na.rm=TRUE)))
+
+print(c("Holt:", mean(abs(Z2), na.rm=TRUE)))
+
+print(c("Holt damped:", mean(abs(Z3), na.rm=TRUE)))
+
+
+```
+
+
+Simple Exponential Smoothing method is best whether you compare MSE values.
+Holt damped is slightly better than ses for MAE value but the improvement is not high enough to justify the added complexity. 
+So we will proceed with using the SES method and apply it to the whole data set to get forecasts for future periods.
+
+
+```{r}
+
+# Random walk forecasts without drift
+Z_rwf <- rwf(Z.ts, h = 140)
+#Z_drwf <- rwf(Z.ts, h = 140, drift = TRUE)
+#Z_mean <- meanf(Z.ts, h = 140)
+
+# Exponential Smoothing Forecast
+Z_ses <- ses(Y.ts, h = 140)
+
+autoplot(Z.ts) +
+  autolayer(Z_rwf, series = "Naive", PI = FALSE) +
+  #autolayer(Z_drwf, series = "Drift", PI = FALSE) +
+  #autolayer(Z_mean, series = "Mean", PI = FALSE) +
+  autolayer(Z_ses, series = "Ses", PI = FALSE)
+
+```
+
+Both simple exponential smoothing and naive random walk methods provide identical forcasts with ses having a slight edge.
+
+
+# Exponential Smoothing: Check for alpha
+
+```{r}
+
+Z_ses <- ses(Z.ts, h = 140)
+Z_ses[["model"]]
+
+```
+
+The value of alpha of $\alpha = 0.9999$ is very close to one, showing that the level reacts strongly to each new observation. This also makes the ses method almost indistinguishable fom random walk forecast.
+
+
+```{r}
+
+# Estimate parameters
+
+
+summary(Z_ses)
+
+```
