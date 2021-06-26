@@ -1,6 +1,7 @@
 library(ggplot2)
 library(forecast)
 library(urca)
+library(tidyverse)
 
 data <- read.csv("https://raw.githubusercontent.com/dmoste/DATA624/main/raw_data.csv", header = TRUE)
 
@@ -13,13 +14,30 @@ summary(s01_v01_ts)
 summary(s01_v02_ts)
 summary(s02_v02_ts)
 
-# Impute missing values
+# Impute missing values from s01_v01
 s01_v01_ts <- forecast::na.interp(s01_v01_ts)
 
 # Trying to get a visual of the data
 autoplot(s01_v01_ts)
 autoplot(s01_v02_ts)
 autoplot(s02_v02_ts)
+
+# Checking if volume changes significantly after gaps
+gaps <- diff(data$SeriesInd) > 1
+gaps <- c(FALSE, gaps)
+gaps_df <- data.frame("SeriesInd" = data$SeriesInd, "AfterGap" = gaps, "S01V02" = data$S01Var02)
+
+after_gap <- gaps_df %>%
+  filter(AfterGap) %>%
+  drop_na()
+all_others <- gaps_df %>%
+  filter(AfterGap == FALSE) %>%
+  drop_na()
+
+gap_comparison <- data.frame("Situation" = c("After Gap", "Others"),
+                             "Mean" = c(mean(after_gap$S01V02),mean(all_others$S01V02)),
+                             "sd" = c(sd(after_gap$S01V02),sd(all_others$S01V02)),
+                             "Variance" = c(var(after_gap$S01V02),var(all_others$S01V02)))
 
 # Check performance of random walk
 rwf_nodrift <- tsCV(s01_v01_ts, rwf, drift = FALSE, h = 1)
@@ -91,19 +109,6 @@ checkresiduals(s01_v02_arima)
 
 # This is the lowest rmse
 
-# Try logging the data
-log_s01_v01_ts <- log(s01_v02_ts)
-log_s01_v01_ts %>% diff() %>% ggtsdisplay(main="")
-log_s01_v01_ts %>% diff() %>% ur.kpss() %>% summary()
-
-log_s01_v02_arima <- auto.arima(log_s01_v01_ts, seasonal = FALSE,
-                            stepwise = FALSE, approximation = FALSE)
-
-summary(log_s01_v02_arima)
-checkresiduals(log_s01_v02_arima)
-
-# This produces by far the best fit
-
 #######################
 
 # Check performance of random walk
@@ -139,19 +144,6 @@ summary(s02_v02_arima)
 checkresiduals(s02_v02_arima)
 
 # This is the lowest rmse
-
-# Try logging the data
-log_s02_v01_ts <- log(s02_v02_ts)
-log_s02_v01_ts %>% diff() %>% ggtsdisplay(main="")
-log_s02_v01_ts %>% diff() %>% ur.kpss() %>% summary()
-
-log_s02_v02_arima <- auto.arima(log_s02_v01_ts, seasonal = FALSE,
-                                stepwise = FALSE, approximation = FALSE)
-
-summary(log_s02_v02_arima)
-checkresiduals(log_s02_v02_arima)
-
-# This produces by far the best fit
 
 # Forecasts
 s01_v01_forecast <- rwf(s01_v01_ts, h = 140)
