@@ -3,8 +3,8 @@ title: "Project_1_compiled"
 author: "Patrick Maloney"
 date: "6/27/2021"
 output:
-  html_document: default
   word_document: default
+  html_document: default
 ---
 
 ```{r setup, include=FALSE}
@@ -99,18 +99,19 @@ In the end, however, these techniques largely failed to significantly outperform
 
 ### Results
 
-Here are the final forecasts selected for each variable:
+Here are the first few values of the final forecasts selected for each variable:
 
-##### S01Var01
+
 ```{r echo=FALSE}
-
+results <- read.csv('Results.csv')
+head(results)
 ```
+As we can see in the table above, all but two ended up using the naive random walk method.
 
+## Appendix
 
-### Appendix
+Below is all code and in depth analysis for this project
 ```{r}
-
-
 
 s01_v01_ts <- ts(window(raw$S01Var01, end = 1622))
 s01_v02_ts <- ts(window(raw$S01Var02, end = 1622))
@@ -859,7 +860,7 @@ autoplot(S06Var05.ts-S06Var07.ts) +
 
 Differences in price are white noise centered at zero. The range of these differences is small compared to the level of each variable. For this reason, I'll restrict the analysis to only S06Var05, and then apply the best model for S06Var05 to S06Var07 as well.
 
-## Simple forecasts
+Simple forecasts
 
 Because "a naive forecast is optimal when data follow a random walk" (HA 3.1), I compute some simple forecasts for each variable before performing more complex analysis. The performance of these simple models will provide a benchmark for performance of more sophisticated models. In the event of a tie, I'll favor these simpler models.
 
@@ -901,7 +902,7 @@ S06Var05_rmse_meanf <- sqrt(mean(S06Var05_rmse_meanf^2, na.rm = TRUE))
 
 For both S05Var03 and S06Var05, the best-performing model is the random walk forecast with no drift. For S05Var03, RMSE = 0.9037. For S06Var05, RMSE = 0.5712.
 
-## Exponential smoothing
+Exponential smoothing
 
 Below, I fit a simple exponential smoothing method.
 
@@ -932,7 +933,7 @@ For the S05Var03 series, an exponential smoothing model with damping and drift p
 
 The parameters for the optimal model for the S06Var05 data are somewhat different, with $\alpha = 0.8679$ and $\phi = 0.9733$. This suggests that values earlier than lag-1 carry some importance in generating forecasts, and that damping at a more gradual pace is optimal. Still, RMSE improves only marginally with this more complex model. Simple random walk forecasts with no drift are still the top contenders for all three variables under examination.
 
-## ARIMA models
+ARIMA models
 
 ARIMA models are generally restricted to stationary data. The most common technique for producing stationary data from a trended dataset such as this one is to perform first-differencing. We then perform a Box-Ljung test on the differenced data to determine whether the result is stationary.
 
@@ -989,7 +990,7 @@ For S05Var03, RMSE for the ARIMA(0,1,2) model is 0.8963. For S06Var05, RMSE for 
 
 Had ARIMA models provided a greater reduction in RMSE, then we would proceed from here to an analysis of residuals.
 
-## Conclusion
+Conclusion
 
 For the variables S05Var03, S06Var05, and S06Var07, the best forecasting model is a random walk forecast without drift. The forecast value for all future times is the most recent value of the time series. As time extends into the future, prediction intervals for these forecasts become wider:
 
