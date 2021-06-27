@@ -1,7 +1,7 @@
 ---
 title: "DATA624 Project 1"
 author: "Daniel Moscoe"
-date: "6/24/2021"
+date: "6/27/2021"
 output: html_document
 ---
 
@@ -81,124 +81,124 @@ The mean square difference between values across gaps is 0.376, and the mean squ
 While it's not known what process generated these data, the levels and behavior of the data are similar to those of stock prices. For the purpose of this report, I'll regard each value as a closing stock price of a different company, and I'll regard the `time series`SeriesInd` values as counting days. Restarting the time series at Day = 0 and dropping outliers from the group S06 data gives us the following:
 
 ```{r}
-RST.ts <- ts(raw$S05Var03)
+S05Var03.ts <- ts(raw$S05Var03)
 
-UVW.ts <- raw %>%
+S06Var05.ts <- raw %>%
   filter(S06Var05 < 100) %>%
   select(S06Var05) %>%
   ts()
 
-XYZ.ts <- raw %>%
+S06Var07.ts <- raw %>%
   filter(S06Var07 < 100) %>%
   select(S06Var07) %>%
   ts()
 
-autoplot(RST.ts) +
+autoplot(S05Var03.ts) +
   xlab("Day") +
   ylab("Closing Price (USD)") +
-  ggtitle("Daily Closing Price of RST")
+  ggtitle("Daily Closing Price of S05Var03")
 
-autoplot(UVW.ts) +
+autoplot(S06Var05.ts) +
   xlab("Day") +
   ylab("Closing Price (USD)") +
-  ggtitle("Daily Closing Price of UVW")
+  ggtitle("Daily Closing Price of S06Var05")
 
-autoplot(XYZ.ts) +
+autoplot(S06Var07.ts) +
   xlab("Day") +
   ylab("Closing Price (USD)") +
-  ggtitle("Daily Closing Price of XYZ")
+  ggtitle("Daily Closing Price of S06Var07")
 ```
 
-How similar are the time series representing UVW and XYZ?
+How similar are the time series representing S06Var05 and S06Var07?
 
 ```{r}
-autoplot(UVW.ts-XYZ.ts) +
+autoplot(S06Var05.ts-S06Var07.ts) +
   xlab("Day") +
   ylab("Difference in price (USD)") +
-  ggtitle("Daily difference in prices, UVW and XYZ")
+  ggtitle("Daily difference in prices, S06Var05 and S06Var07")
 ```
 
-Differences in price are white noise centered at zero. The range of these differences is small compared to the level of each variable. For this reason, I'll restrict the analysis to only UVW, and then apply the best model for UVW to XYZ as well.
+Differences in price are white noise centered at zero. The range of these differences is small compared to the level of each variable. For this reason, I'll restrict the analysis to only S06Var05, and then apply the best model for S06Var05 to S06Var07 as well.
 
 ## Simple forecasts
 
 Because "a naive forecast is optimal when data follow a random walk" (HA 3.1), I compute some simple forecasts for each variable before performing more complex analysis. The performance of these simple models will provide a benchmark for performance of more sophisticated models. In the event of a tie, I'll favor these simpler models.
 
 ```{r}
-RST_rwf <- rwf(RST.ts, h = 140)
-UVW_rwf <- rwf(UVW.ts, h = 140)
-XYZ_rwf <- rwf(XYZ.ts, h = 140)
-RST_drwf <- rwf(RST.ts, h = 140, drift = TRUE)
-UVW_drwf <- rwf(UVW.ts, h = 140, drift = TRUE)
-XYZ_drwf <- rwf(XYZ.ts, h = 140, drift = TRUE)
-RST_mean <- meanf(RST.ts, h = 140)
-UVW_mean <- meanf(UVW.ts, h = 140)
-XYZ_mean <- meanf(XYZ.ts, h = 140)
+S05Var03_rwf <- rwf(S05Var03.ts, h = 140)
+S06Var05_rwf <- rwf(S06Var05.ts, h = 140)
+S06Var07_rwf <- rwf(S06Var07.ts, h = 140)
+S05Var03_drwf <- rwf(S05Var03.ts, h = 140, drift = TRUE)
+S06Var05_drwf <- rwf(S06Var05.ts, h = 140, drift = TRUE)
+S06Var07_drwf <- rwf(S06Var07.ts, h = 140, drift = TRUE)
+S05Var03_mean <- meanf(S05Var03.ts, h = 140)
+S06Var05_mean <- meanf(S06Var05.ts, h = 140)
+S06Var07_mean <- meanf(S06Var07.ts, h = 140)
 
-autoplot(RST.ts) +
-  autolayer(RST_rwf, series = "Naive", PI = FALSE) +
-  autolayer(RST_drwf, series = "Drift", PI = FALSE) +
-  autolayer(RST_mean, series = "Mean", PI = FALSE)
+autoplot(S05Var03.ts) +
+  autolayer(S05Var03_rwf, series = "Naive", PI = FALSE) +
+  autolayer(S05Var03_drwf, series = "Drift", PI = FALSE) +
+  autolayer(S05Var03_mean, series = "Mean", PI = FALSE)
 
-autoplot(UVW.ts) +
-  autolayer(UVW_rwf, series = "Naive", PI = FALSE) +
-  autolayer(UVW_drwf, series = "Drift", PI = FALSE) +
-  autolayer(UVW_mean, series = "Mean", PI = FALSE)
+autoplot(S06Var05.ts) +
+  autolayer(S06Var05_rwf, series = "Naive", PI = FALSE) +
+  autolayer(S06Var05_drwf, series = "Drift", PI = FALSE) +
+  autolayer(S06Var05_mean, series = "Mean", PI = FALSE)
 ```
 
 Evaluating performance of simple models using cross-validation and RMSE:
 ```{r}
-RST_rmse_rwf_nodrift <- tsCV(RST.ts, rwf, drift = FALSE, h = 1)
-RST_rmse_rwf_nodrift <- sqrt(mean(RST_rmse_rwf_nodrift^2, na.rm = TRUE))
+S05Var03_rmse_rwf_nodrift <- tsCV(S05Var03.ts, rwf, drift = FALSE, h = 1)
+S05Var03_rmse_rwf_nodrift <- sqrt(mean(S05Var03_rmse_rwf_nodrift^2, na.rm = TRUE))
 
-RST_rmse_rwf_drift <- tsCV(RST.ts, rwf, drift = TRUE, h = 1)
-RST_rmse_rwf_drift <- sqrt(mean(RST_rmse_rwf_drift^2, na.rm = TRUE))
+S05Var03_rmse_rwf_drift <- tsCV(S05Var03.ts, rwf, drift = TRUE, h = 1)
+S05Var03_rmse_rwf_drift <- sqrt(mean(S05Var03_rmse_rwf_drift^2, na.rm = TRUE))
 
-RST_rmse_meanf <- tsCV(RST.ts, meanf, h = 1)
-RST_rmse_meanf <- sqrt(mean(RST_rmse_meanf^2, na.rm = TRUE))
+S05Var03_rmse_meanf <- tsCV(S05Var03.ts, meanf, h = 1)
+S05Var03_rmse_meanf <- sqrt(mean(S05Var03_rmse_meanf^2, na.rm = TRUE))
 
-UVW_rmse_rwf_nodrift <- tsCV(UVW.ts, rwf, drift = FALSE, h = 1)
-UVW_rmse_rwf_nodrift <- sqrt(mean(UVW_rmse_rwf_nodrift^2, na.rm = TRUE))
+S06Var05_rmse_rwf_nodrift <- tsCV(S06Var05.ts, rwf, drift = FALSE, h = 1)
+S06Var05_rmse_rwf_nodrift <- sqrt(mean(S06Var05_rmse_rwf_nodrift^2, na.rm = TRUE))
 
-UVW_rmse_rwf_drift <- tsCV(UVW.ts, rwf, drift = TRUE, h = 1)
-UVW_rmse_rwf_drift <- sqrt(mean(UVW_rmse_rwf_drift^2, na.rm = TRUE))
+S06Var05_rmse_rwf_drift <- tsCV(S06Var05.ts, rwf, drift = TRUE, h = 1)
+S06Var05_rmse_rwf_drift <- sqrt(mean(S06Var05_rmse_rwf_drift^2, na.rm = TRUE))
 
-UVW_rmse_meanf <- tsCV(UVW.ts, meanf, h = 1)
-UVW_rmse_meanf <- sqrt(mean(UVW_rmse_meanf^2, na.rm = TRUE))
+S06Var05_rmse_meanf <- tsCV(S06Var05.ts, meanf, h = 1)
+S06Var05_rmse_meanf <- sqrt(mean(S06Var05_rmse_meanf^2, na.rm = TRUE))
 ```
 
-For both RST and UVW, the best-performing model is the random walk forecast with no drift. For RST, RMSE = 0.9037. For UVW, RMSE = 0.5712.
+For both S05Var03 and S06Var05, the best-performing model is the random walk forecast with no drift. For S05Var03, RMSE = 0.9037. For S06Var05, RMSE = 0.5712.
 
 ## Exponential smoothing
 
 Below, I fit a simple exponential smoothing method.
 
 ```{r R.options = list(max.print = 15)}
-RST_ses <- ses(RST.ts, h = 140)
-summary(RST_ses)
+S05Var03_ses <- ses(S05Var03.ts, h = 140)
+summary(S05Var03_ses)
 ```
 
 The optimized simple exponential smoothing method computed $\alpha = 0.9999$, making this method almost indistinguishable from the random-walk forecast. It offers a tiny improvement in performance when measured as RMSE, but this improvement is not sufficient to justify a more complex model.
 
 ```{r R.options = list(max.print = 15)}
-UVW_ses <- ses(UVW.ts, h = 140)
-summary(UVW_ses)
+S06Var05_ses <- ses(S06Var05.ts, h = 140)
+summary(S06Var05_ses)
 ```
 
-For UVW, $\alpha = 0.8676$, indicating that optimal simple exponential smoothing does take some account of values earlier than lag-1. Similar to SES's performance with RST, SES offers only a very small performance gain over the random-walk forecast. This small gain is not sufficient to justify a more complex model.
+For S06Var05, $\alpha = 0.8676$, indicating that optimal simple exponential smoothing does take some account of values earlier than lag-1. Similar to SES's performance with S05Var03, SES offers only a very small performance gain over the random-walk forecast. This small gain is not sufficient to justify a more complex model.
 
 Does allowing for drift and damping improve the performance of the exponential smoothing models?
 
 ```{r R.options = list(max.print = 15)}
-RST_holt <- holt(RST.ts, h = 140, damped = TRUE)
-UVW_holt <- holt(UVW.ts, h = 140, damped = TRUE)
-summary(RST_holt)
-summary(UVW_holt)
+S05Var03_holt <- holt(S05Var03.ts, h = 140, damped = TRUE)
+S06Var05_holt <- holt(S06Var05.ts, h = 140, damped = TRUE)
+summary(S05Var03_holt)
+summary(S06Var05_holt)
 ```
 
-For the RST series, an exponential smoothing model with damping and drift performs marginally better than the random walk forecast with no drift. For this data, the optimal choice for $\alpha$ is almost 1, indicating that forecast values are almost entirely dependent only on their lag-1. $\phi = 0.8$. This is a low value that rapidly damps forecasts. Together, the high value of $\alpha$ and the low value of $\phi$ suggest that exponential smoothing with damping and drift don't offer much additional insight above the simple random walk forecast.
+For the S05Var03 series, an exponential smoothing model with damping and drift performs marginally better than the random walk forecast with no drift. For this data, the optimal choice for $\alpha$ is almost 1, indicating that forecast values are almost entirely dependent only on their lag-1. $\phi = 0.8$. This is a low value that rapidly damps forecasts. Together, the high value of $\alpha$ and the low value of $\phi$ suggest that exponential smoothing with damping and drift don't offer much additional insight above the simple random walk forecast.
 
-The parameters for the optimal model for the UVW data are somewhat different, with $\alpha = 0.8679$ and $\phi = 0.9733$. This suggests that values earlier than lag-1 carry some importance in generating forecasts, and that damping at a more gradual pace is optimal. Still, RMSE improves only marginally with this more complex model. Simple random walk forecasts with no drift are still the top contenders for all three variables under examination.
+The parameters for the optimal model for the S06Var05 data are somewhat different, with $\alpha = 0.8679$ and $\phi = 0.9733$. This suggests that values earlier than lag-1 carry some importance in generating forecasts, and that damping at a more gradual pace is optimal. Still, RMSE improves only marginally with this more complex model. Simple random walk forecasts with no drift are still the top contenders for all three variables under examination.
 
 ## ARIMA models
 
@@ -207,40 +207,40 @@ ARIMA models are generally restricted to stationary data. The most common techni
 Differenced data:
 
 ```{r}
-autoplot(diff(RST.ts)) +
+autoplot(diff(S05Var03.ts)) +
   xlab("Day") +
   ylab("Day-over-day difference in closing price (USD)") +
-  ggtitle("First-differenced closing prices for RST")
+  ggtitle("First-differenced closing prices for S05Var03")
 
-autoplot(diff(UVW.ts)) +
+autoplot(diff(S06Var05.ts)) +
   xlab("Day") +
   ylab("Day-over-day difference in closing price (USD)") +
-  ggtitle("First-differenced closing prices for UVW")
+  ggtitle("First-differenced closing prices for S06Var05")
 ```
 
 For both variables, this data does appear to be stationary-- it has mean near zero, and its variability does not appear to change over time. The values appear to be random. What do the ACF plots show?
 
 ```{r}
-autoplot(Acf(diff(RST.ts))) +
-  ggtitle("ACF plot for RST")
-autoplot(Acf(diff(UVW.ts))) +
-  ggtitle("ACF plot for UVW")
+autoplot(Acf(diff(S05Var03.ts))) +
+  ggtitle("ACF plot for S05Var03")
+autoplot(Acf(diff(S06Var05.ts))) +
+  ggtitle("ACF plot for S06Var05")
 ```
 
 The ACF plots shows many significant lags, which suggest the differenced data may not be stationary.
 
 ```{r}
-autoplot(Pacf(diff(RST.ts))) +
-  ggtitle("PACF plot for RST")
-autoplot(Pacf(diff(UVW.ts))) +
-  ggtitle("PACF plot for UVW")
+autoplot(Pacf(diff(S05Var03.ts))) +
+  ggtitle("PACF plot for S05Var03")
+autoplot(Pacf(diff(S06Var05.ts))) +
+  ggtitle("PACF plot for S06Var05")
 ```
 
 The PACF plots also show several significant values, further casting doubt on the stationarity of this data. A portmanteau test confirms our suspicion:
 
 ```{r}
-Box.test(diff(RST.ts, differences = 2), type = 'Ljung-Box')
-Box.test(diff(UVW.ts, differences = 2), type = 'Ljung-Box')
+Box.test(diff(S05Var03.ts, differences = 2), type = 'Ljung-Box')
+Box.test(diff(S06Var05.ts, differences = 2), type = 'Ljung-Box')
 ```
 
 The Box-Ljung test confirms that the data should not be considered  stationary. Even after two rounds of differencing, the null hypothesis that each observation is independent of its lag is rejected, with a p-value near 0.
@@ -248,42 +248,42 @@ The Box-Ljung test confirms that the data should not be considered  stationary. 
 Let's fit an ARIMA model anyway. Since the visual appearance of stationarity is so striking, it might be that the data is close enough to satisfying the assumptions that the model still proves useful.
 
 ```{r}
-RST_arima <- auto.arima(RST.ts)
-UVW_arima <- auto.arima(UVW.ts)
-summary(RST_arima)
-summary(UVW_arima)
+S05Var03_arima <- auto.arima(S05Var03.ts)
+S06Var05_arima <- auto.arima(S06Var05.ts)
+summary(S05Var03_arima)
+summary(S06Var05_arima)
 ```
 
-For RST, RMSE for the ARIMA(0,1,2) model is 0.8963. For UVW, RMSE for ARIMA(2,1,2) is 0.5637. As with the damped and trended exponential smoothing methods, these models give marginal improvements in RMSE. However, these small improvements are not sufficient to justify their use as forecasting models, since they're complicated relative to simple forecasting methods.
+For S05Var03, RMSE for the ARIMA(0,1,2) model is 0.8963. For S06Var05, RMSE for ARIMA(2,1,2) is 0.5637. As with the damped and trended exponential smoothing methods, these models give marginal improvements in RMSE. However, these small improvements are not sufficient to justify their use as forecasting models, since they're complicated relative to simple forecasting methods.
 
 Had ARIMA models provided a greater reduction in RMSE, then we would proceed from here to an analysis of residuals.
 
 ## Conclusion
 
-For the variables RST.ts (named S05Var03 in the original template), UVW.ts (S06Var05), and XYZ.ts (S06Var07), the best forecasting model is a random walk forecast without drift. The forecast value for all future times is the most recent value of the time series. As time extends into the future, prediction intervals for these forecasts become wider:
+For the variables S05Var03, S06Var05, and S06Var07, the best forecasting model is a random walk forecast without drift. The forecast value for all future times is the most recent value of the time series. As time extends into the future, prediction intervals for these forecasts become wider:
 
 ```{r}
-autoplot(RST.ts) +
-  autolayer(RST_rwf, series = "Naive", PI = TRUE) +
+autoplot(S05Var03.ts) +
+  autolayer(S05Var03_rwf, series = "Naive", PI = TRUE) +
   xlab("Day") +
   ylab("Closing price (USD)") +
-  ggtitle("Forecasts and prediction intervals for RST")
+  ggtitle("Forecasts and prediction intervals for S05Var03")
 ```
 
 ```{r}
-autoplot(UVW.ts) +
-  autolayer(UVW_rwf, series = "Naive", PI = TRUE) +
+autoplot(S06Var05.ts) +
+  autolayer(S06Var05_rwf, series = "Naive", PI = TRUE) +
   xlab("Day") +
   ylab("Closing price (USD)") +
-  ggtitle("Forecasts and prediction intervals for UVW")
+  ggtitle("Forecasts and prediction intervals for S06Var05")
 ```
 
 ```{r}
-autoplot(XYZ.ts) +
-  autolayer(XYZ_rwf, series = "Naive", PI = TRUE) +
+autoplot(S06Var07.ts) +
+  autolayer(S06Var07_rwf, series = "Naive", PI = TRUE) +
   xlab("Day") +
   ylab("Closing price (USD)") +
-  ggtitle("Forecasts and prediction intervals for XYZ")
+  ggtitle("Forecasts and prediction intervals for S06Var07")
 ```
 
 This is consistent with reasonable expectations for stock market price data, which are notoriously resistant to time series forecasting methods. If we had more information about this data-- such as information about the process that generated it, or historical data further into the past-- it might have been possible to take better advantage of methods incorporating trend. Over the relatively short horizon of this data set, though, long-run trends that appear in stock prices were not wholly evident.
@@ -291,15 +291,13 @@ This is consistent with reasonable expectations for stock market price data, whi
 For all future times, the forecast values for each variable are given below.
 
 ```{r R.options = list(max.print = 15)}
-#Forecast value for RST.ts (S05Var03):
-RST_rwf_fc <- forecast(RST_rwf, h = 140)
-print(RST_rwf_fc)
 
-#Forecast value for RST.ts (S06Var05):
-UVW_rwf_fc <- forecast(UVW_rwf, h = 140)
-print(UVW_rwf_fc)
+S05Var03_rwf_fc <- forecast(S05Var03_rwf, h = 140)
+print(S05Var03_rwf_fc)
 
-#Forecast value for RST.ts (S06Var07):
-XYZ_rwf_fc <- forecast(XYZ_rwf, h = 140)
-print(XYZ_rwf_fc)
+S06Var05_rwf_fc <- forecast(S06Var05_rwf, h = 140)
+print(S06Var05_rwf_fc)
+
+S06Var07_rwf_fc <- forecast(S06Var07_rwf, h = 140)
+print(S06Var07_rwf_fc)
 ```
