@@ -3,7 +3,7 @@ library(forecast)
 library(urca)
 library(tidyverse)
 
-data <- read.csv("https://raw.githubusercontent.com/dmoste/DATA624/main/raw_data.csv", header = TRUE)
+data <- read.csv("https://raw.githubusercontent.com/dmoste/DATA624/main/Project1/raw_data.csv", header = TRUE)
 
 s01_v01_ts <- ts(window(data$S01Var01, end = 1622))
 s01_v02_ts <- ts(window(data$S01Var02, end = 1622))
