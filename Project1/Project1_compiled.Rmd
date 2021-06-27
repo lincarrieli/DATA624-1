@@ -1,0 +1,1046 @@
+---
+title: "Project_1_compiled"
+author: "Patrick Maloney"
+date: "6/27/2021"
+output:
+  html_document: default
+  word_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(fpp2)
+library(readxl)
+library(ggplot2)
+library(forecast)
+library(urca)
+library(tseries)
+
+xlsx_path <- "raw_data.xlsx"
+raw <- readxl::read_xlsx(xlsx_path)
+
+```
+
+
+
+### Introduction
+
+  This project was completed by Samuel Kigamba, Lin Li, Patrick Maloney, Daniel Moscoe, and David Moste. In this assignment, we were given a collection of de-identified timeseries and instructed to forecast 140 periods into the future. The fact that no context about the data-generation process was given meant that we would have to fully rely on our technical skills to identify the correct approach for the forecasts. 
+
+
+### Unraveling the Mystery
+  After looking at the visualizations and running some tests, we came to the conclusion that this appears to be stock market data, with each variable possibly representing a different stock price over time. We came to this conclusion due to the way the points were generally close together in value over adjacent periods, but appeared to also be occurring in any direction (up or down) on any given period . Those in the data science world will recognise this as a random walk, meaning that the value for one period doesn't necessarily affect the value for the following period. See the example below for a couple of our variables, which all had these properties in common.
+```{r echo=FALSE}
+raw %>%
+  ggplot(aes(x = SeriesInd, y = S05Var03)) +
+  geom_line() +
+  ggtitle("S05Var03")
+
+raw %>%
+  ggplot(aes(x = SeriesInd, y = S01Var01)) +
+  geom_line() +
+  ggtitle("S01Var01")
+
+```
+
+As we can see from these examples, the data appears to be a random walk and has a trend but no clear seasonality or cylclicity. This is generally typical of stock market data.
+
+The second clue was that the variable SeriesInd contains numerous gaps where data is missing. However, our analysis showed that these gaps occurred at regular intervals and the differences in values between periods did not suggest a missing data. In fact, the gaps usually occurred after five consecutive periods, with the typical gap lasting two periods, along with other single gaps added in intermittently. This pattern closely resembles the stock market schedule of operation, which is closed on weekends and holidays.  Therefore, we continued with the analysis with the understanding that we were likely dealing with stock market data.
+
+
+
+### Methodology
+
+  Since all the variables we were assigned to analyze had very similar attributes, and we assume that they all demonstrate a stock price over time, we followe a general methodology for producing each forecast, running the unique data through each step. In some cases, the varaibles were so similar that a single model fit each stock.  In this space, our general methodolgy will be presented, but for further technical details on each stock forecast, please see the Appendix.
+  
+##### Exploratory Visualization
+  
+  Once again, we looked at each timeseries to determine the best course of action for our forecast.  Below is an example for S06Var05:
+
+```{r echo=FALSE}
+autoplot(ts(raw$S06Var05))
+
+```
+  We can see a clear outlier that had to be removed to be able to effectively analyze the rest of the series.
+
+```{r echo=FALSE}
+S06Var05 <- raw %>%
+  filter(S06Var05 < 100) %>%
+  select(S06Var05) %>%
+  ts()
+autoplot(S06Var05)
+
+```
+Now that the outliers are removed, we can see that the points are reasonably close together in sequential periods for the most part and we can comfortably say that the lack of any clear pattern suggests this is a random walk.
+
+#### Simple Forecasts
+The next step is to produce a simple random walk forecast, a naive model that uses the previous period to predict the value of the following period.
+
+```{r echo=FALSE}
+S06Var05_rwf <- rwf(S06Var05, h = 140)
+S06Var05_drwf <- rwf(S06Var05, h = 140, drift = TRUE)
+S06Var05_mean <- meanf(S06Var05, h = 140)
+
+autoplot(S06Var05) +
+  autolayer(S06Var05_rwf, series = "Naive", PI = FALSE) +
+  autolayer(S06Var05_drwf, series = "Drift", PI = FALSE) +
+  autolayer(S06Var05_mean, series = "Mean", PI = FALSE)
+
+```
+
+Here is our example of our baseline Naive random walk forecast model, with the mean models and drift models included for comparison. For those not familiar, a random walk with drift essentially allows the forecast to follow the trend line, while the mean just takes the average value. 
+
+Random walks such as these are notoriously challenging to forecast. We will examine several possible methods to improve on these forecasts with more sophisticated techniques, but if the performance is nearly the same, we will favor the simpler model, as these often perform better in the wild over longer periods.
+
+Additional models were fit with various techniques including simple exponential smoothing (SES), a technique that utilizes moving averages to forecast along a trend line, a Holt method, and ARIMA models, which allow for auto-regression on non-stationary data. 
+
+In the end, however, these techniques largely failed to significantly outperform the random walk forecasts without drift. There were some cases where the SES method marginally outperformed the naive method, but not by enough to justify adopting the more complicated method, generally speaking. On a case by case basis, other models were sometimes used, but the gains were marginal over the naive model. For full statistical analysis of each forecast, please see the Appendix.
+
+### Results
+
+Here are the final forecasts selected for each variable:
+
+##### S01Var01
+```{r echo=FALSE}
+
+```
+
+
+### Appendix
+```{r}
+
+
+
+s01_v01_ts <- ts(window(raw$S01Var01, end = 1622))
+s01_v02_ts <- ts(window(raw$S01Var02, end = 1622))
+s02_v02_ts <- ts(window(raw$S02Var02, end = 1622))
+
+# Check for NAs and general data summary
+summary(s01_v01_ts)
+summary(s01_v02_ts)
+summary(s02_v02_ts)
+```
+```{r}
+# Impute missing values from s01_v01
+s01_v01_ts <- forecast::na.interp(s01_v01_ts)
+
+# Trying to get a visual of the data
+autoplot(s01_v01_ts)
+autoplot(s01_v02_ts)
+autoplot(s02_v02_ts)
+```
+```{r}
+# Checking if volume changes significantly after gaps
+gaps <- diff(raw$SeriesInd) > 1
+gaps <- c(FALSE, gaps)
+gaps_df <- data.frame("SeriesInd" = raw$SeriesInd, "AfterGap" = gaps, "S01V02" = raw$S01Var02)
+
+after_gap <- gaps_df %>%
+  filter(AfterGap) %>%
+  drop_na()
+all_others <- gaps_df %>%
+  filter(AfterGap == FALSE) %>%
+  drop_na()
+
+gap_comparison <- data.frame("Situation" = c("After Gap", "Others"),
+                             "Mean" = c(mean(after_gap$S01V02),mean(all_others$S01V02)),
+                             "sd" = c(sd(after_gap$S01V02),sd(all_others$S01V02)),
+                             "Variance" = c(var(after_gap$S01V02),var(all_others$S01V02)))
+```
+```{r}
+# Check performance of random walk
+rwf_nodrift <- tsCV(s01_v01_ts, rwf, drift = FALSE, h = 1)
+rmse_rwf_nodrift <- sqrt(mean(rwf_nodrift^2, na.rm = TRUE))
+rwf_drift <- tsCV(s01_v01_ts, rwf, drift = TRUE, h = 1)
+rmse_rwf_drift <- sqrt(mean(rwf_drift^2, na.rm = TRUE))
+meanf <- tsCV(s01_v01_ts, meanf, h = 1)
+rmse_meanf <- sqrt(mean(meanf^2, na.rm = TRUE))
+```
+```{r}
+# The random walk with no drift has the lowest rmse
+
+# Try ses
+s01_v01_ses <- ses(s01_v01_ts, h = 140)
+summary(s01_v01_ses)
+```
+```{r}
+# The rmse is essentially the same as a random walk with no drift
+
+# Try a holt model
+s01_v01_holt <- holt(s01_v01_ts, h = 140)
+summary(s01_v01_holt)
+```
+```{r}
+# The rmse is still the same
+
+# Checking arima
+s01_v01_ts %>% diff() %>% ggtsdisplay(main="")
+s01_v01_ts %>% diff() %>% ur.kpss() %>% summary()
+
+s01_v01_arima <- auto.arima(s01_v01_ts, seasonal = FALSE,
+                            stepwise = FALSE, approximation = FALSE)
+
+summary(s01_v01_arima)
+checkresiduals(s01_v01_arima)
+```
+ The rmse is slightly better with the arima model.
+
+#######################
+```{r}
+# Check performance of random walk
+rwf_nodrift <- tsCV(s01_v02_ts, rwf, drift = FALSE, h = 1)
+rmse_rwf_nodrift <- sqrt(mean(rwf_nodrift^2, na.rm = TRUE))
+rwf_drift <- tsCV(s01_v02_ts, rwf, drift = TRUE, h = 1)
+rmse_rwf_drift <- sqrt(mean(rwf_drift^2, na.rm = TRUE))
+meanf <- tsCV(s01_v02_ts, meanf, h = 1)
+rmse_meanf <- sqrt(mean(meanf^2, na.rm = TRUE))
+```
+The random walk with no drift has the lowest rmse
+```{r}
+# Try ses
+s01_v02_ses <- ses(s01_v02_ts, h = 140)
+summary(s01_v02_ses)
+
+# The rmse is much better with ses
+
+# Try a holt model
+s01_v02_holt <- holt(s01_v02_ts, h = 140)
+summary(s01_v02_holt)
+```
+ The rmse is still better with ses
+
+```{r}
+# Checking arima
+s01_v02_ts %>% diff() %>% ggtsdisplay(main="")
+s01_v02_ts %>% diff() %>% ur.kpss() %>% summary()
+
+s01_v02_arima <- auto.arima(s01_v02_ts, seasonal = FALSE,
+                            stepwise = FALSE, approximation = FALSE)
+
+summary(s01_v02_arima)
+checkresiduals(s01_v02_arima)
+
+# This is the lowest rmse
+```
+#######################
+```{r}
+# Check performance of random walk
+rwf_nodrift <- tsCV(s02_v02_ts, rwf, drift = FALSE, h = 1)
+rmse_rwf_nodrift <- sqrt(mean(rwf_nodrift^2, na.rm = TRUE))
+rwf_drift <- tsCV(s02_v02_ts, rwf, drift = TRUE, h = 1)
+rmse_rwf_drift <- sqrt(mean(rwf_drift^2, na.rm = TRUE))
+meanf <- tsCV(s02_v02_ts, meanf, h = 1)
+rmse_meanf <- sqrt(mean(meanf^2, na.rm = TRUE))
+```
+ The random walk with no drift has the lowest rmse
+ 
+```{r}
+# Try ses
+s02_v02_ses <- ses(s02_v02_ts, h = 140)
+summary(s02_v02_ses)
+
+# The rmse is much better with ses
+
+# Try a holt model
+s02_v02_holt <- holt(s02_v02_ts, h = 140)
+summary(s02_v02_holt)
+
+# The rmse is still better with ses
+
+# Checking arima
+s02_v02_ts %>% diff() %>% ggtsdisplay(main="")
+s02_v02_ts %>% diff() %>% ur.kpss() %>% summary()
+
+s02_v02_arima <- auto.arima(s02_v02_ts, seasonal = FALSE,
+                            stepwise = FALSE, approximation = FALSE)
+
+summary(s02_v02_arima)
+checkresiduals(s02_v02_arima)
+```
+ This is the lowest rmse
+
+```{r}
+# Forecasts
+s01_v01_forecast <- rwf(s01_v01_ts, h = 140)
+s01_v02_forecast <- forecast(s01_v02_arima, h = 140)
+s02_v02_forecast <- forecast(s02_v02_arima, h = 140)
+
+autoplot(s01_v01_ts) +
+  autolayer(s01_v01_forecast)
+autoplot(s01_v02_ts) +
+  autolayer(s01_v02_forecast)
+autoplot(s02_v02_ts) +
+  autolayer(s02_v02_forecast)
+```
+
+```{r}
+df = raw[c("SeriesInd", "S02Var03", "S03Var05", "S03Var07")]
+summary(df)
+```
+
+S03VAr05 and S03VAr07 looks almost identical from the summary above.
+
+Visualize the data and look for seasonality or trend within the different data sets of data.
+
+```{r}
+# Data under S02var03 has an outlier which we eliminate before creating visualizations.
+df %>%
+  filter(S02Var03 < 20) %>%
+  ggplot(aes(x = SeriesInd, y = S02Var03)) +
+    geom_line() +
+  ggtitle("S02Var03")
+df %>%
+  ggplot(aes(x = SeriesInd, y = S03Var05)) +
+    geom_line() +
+  ggtitle("S03Var05")
+df %>%
+  ggplot(aes(x = SeriesInd, y = S03Var07)) +
+    geom_line() +
+  ggtitle("S03Var07")
+```
+
+
+
+```{r}
+# Convert to time series
+SeriesInd.ts <- ts(raw$SeriesInd)
+S02Var03.ts <- na.remove(ts(raw$S02Var03, frequency = 253))
+S03Var05.ts <- na.remove(ts(raw$S03Var05, frequency = 253))
+S03Var07.ts <- na.remove(ts(raw$S03Var07, frequency = 253))
+```
+
+Decompose data and check for trend and seasonality
+
+```{r}
+S02Var03.ts %>%
+  decompose(type="multiplicative")%>%
+  autoplot() + xlab("Time") +
+  ggtitle("Decomposition of S02Var03")
+S03Var05.ts %>%
+  decompose(type="multiplicative") %>%
+  autoplot() + xlab("Time") +
+  ggtitle("Decomposition of S03Var05")
+S03Var07.ts %>%
+  decompose(type="multiplicative") %>%
+  autoplot() + xlab("Time") +
+  ggtitle("Decomposition of S03Var07")
+```
+
+None of the three variables exhibits obvious seasonality or cyclicity. S02Var03 has an otlier that seems to compress the graph downwards.
+
+
+Evaluating performance of simple models using cross-validation and RMSE:
+
+```{r}
+S02Var03_rmse_rwf_nodrift <- tsCV(S02Var03.ts, rwf, drift = FALSE, h = 1)
+S02Var03_rmse_rwf_nodrift <- sqrt(mean(S02Var03_rmse_rwf_nodrift^2, na.rm = TRUE))
+S02Var03_rmse_rwf_drift <- tsCV(S02Var03.ts, rwf, drift = TRUE, h = 1)
+S02Var03_rmse_rwf_drift <- sqrt(mean(S02Var03_rmse_rwf_drift^2, na.rm = TRUE))
+S02Var03_rmse_meanf <- tsCV(S02Var03.ts, meanf, h = 1)
+S02Var03_rmse_meanf <- sqrt(mean(S02Var03_rmse_meanf^2, na.rm = TRUE))
+S03Var05_rmse_rwf_nodrift <- tsCV(S03Var05.ts, rwf, drift = FALSE, h = 1)
+S03Var05_rmse_rwf_nodrift <- sqrt(mean(S03Var05_rmse_rwf_nodrift^2, na.rm = TRUE))
+S03Var05_rmse_rwf_drift <- tsCV(S03Var05.ts, rwf, drift = TRUE, h = 1)
+S03Var05_rmse_rwf_drift <- sqrt(mean(S03Var05_rmse_rwf_drift^2, na.rm = TRUE))
+S03Var05_rmse_meanf <- tsCV(S03Var05.ts, meanf, h = 1)
+S03Var05_rmse_meanf <- sqrt(mean(S03Var05_rmse_meanf^2, na.rm = TRUE))
+S03Var07_rmse_rwf_nodrift <- tsCV(S03Var07.ts, rwf, drift = FALSE, h = 1)
+S03Var07_rmse_rwf_nodrift <- sqrt(mean(S03Var07_rmse_rwf_nodrift^2, na.rm = TRUE))
+S03Var07_rmse_rwf_drift <- tsCV(S03Var07.ts, rwf, drift = TRUE, h = 1)
+S03Var07_rmse_rwf_drift <- sqrt(mean(S03Var07_rmse_rwf_drift^2, na.rm = TRUE))
+S03Var07_rmse_meanf <- tsCV(S03Var07.ts, meanf, h = 1)
+S03Var07_rmse_meanf <- sqrt(mean(S03Var07_rmse_meanf^2, na.rm = TRUE))
+```
+
+```{r}
+S02Var03_rmse_rwf_nodrift
+S02Var03_rmse_rwf_drift
+S02Var03_rmse_meanf
+S03Var05_rmse_rwf_nodrift
+S03Var05_rmse_rwf_drift
+S03Var05_rmse_meanf
+S03Var07_rmse_rwf_nodrift
+S03Var07_rmse_rwf_drift
+S03Var07_rmse_meanf
+```
+
+From the RMSE analysis of three models, namely: rwf with no drift, rmf with draft and mean, the rfw is the slightly better performing model.
+
+We will use time series cross-validation to compare the one-step forecast accuracy using Simple Exponential Smoothing, Holts Linear trend method and Holds dumped trend methods.
+
+S02Var03
+
+```{r}
+S02Var03_ses <- tsCV(S02Var03.ts, ses, h=140)
+S02Var03_holt <- tsCV(S02Var03.ts, holt, h=140)
+S02Var03_holtdmpd <- tsCV(S02Var03.ts, holt, damped=TRUE, h=140)
+print("S02Var03")
+print("MSE")
+# Compare MSE:
+print(c("ses:", mean(S02Var03_ses^2, na.rm=TRUE)))
+print(c("Holt:", mean(S02Var03_holt^2, na.rm=TRUE)))
+print(c("Holt damped:", mean(S02Var03_holtdmpd^2, na.rm=TRUE)))
+print("MAE")
+# Compare MAE:
+print(c("ses:", mean(abs(S02Var03_ses), na.rm=TRUE)))
+print(c("Holt:", mean(abs(S02Var03_holt), na.rm=TRUE)))
+print(c("Holt damped:", mean(abs(S02Var03_holtdmpd), na.rm=TRUE)))
+```
+
+
+Simple Exponential Smoothing method is best whether you compare MAE or MSE values. 
+So we will proceed with using the SES method and apply it to the whole data set to get forecasts for future periods.
+We will also include the three
+
+
+```{r}
+S02Var03.ts <- raw %>%
+  filter(S02Var03 < 20) %>%
+  select(S02Var03) %>%
+  ts()
+# Random walk forecasts without drift
+S02Var03_rwf <- rwf(S02Var03.ts, h = 140)
+#S02Var03_drwf <- rwf(S02Var03.ts, h = 140, drift = TRUE)
+#S02Var03_mean <- meanf(S02Var03.ts, h = 140)
+# Exponential Smoothing forecast
+S02Var03_ses <- ses(S02Var03.ts, h = 140)
+autoplot(S02Var03.ts) +
+  autolayer(S02Var03_rwf, series = "Naive", PI = FALSE) +
+  #autolayer(S02Var03_drwf, series = "Drift", PI = FALSE) +
+  #autolayer(S02Var03_mean, series = "Mean", PI = FALSE) +
+  autolayer(S02Var03_ses, series = "Ses", PI = FALSE)
+```
+
+Both simple exponential smoothing and naive random walk methods provide identical forecasts.
+
+
+
+```{r}
+# Exponential Smoothing
+S02Var03_ses <- ses(S02Var03.ts, h = 140)
+S02Var03_ses[["model"]]
+```
+
+The value of alpha of $\alpha = 0.9999$ is very close to one, showing that the level reacts strongly to each new observation. This also makes the SES method almost indistinguishable from random walk forecast.
+
+
+```{r}
+# Estimate parameters
+summary(S02Var03_ses)
+```
+
+
+
+S03Var05
+
+```{r}
+S03Var05_ses <- tsCV(S03Var05.ts, ses, h=140)
+S03Var05_holt <- tsCV(S03Var05.ts, holt, h=140)
+S03Var05_holtdmpd <- tsCV(S03Var05.ts, holt, damped=TRUE, h=140)
+print("S03Var05")
+print("MSE")
+# Compare MSE:
+print(c("ses:", mean(S03Var05_ses^2, na.rm=TRUE)))
+print(c("Holt:", mean(S03Var05_holt^2, na.rm=TRUE)))
+print(c("Holt damped:", mean(S03Var05_holtdmpd^2, na.rm=TRUE)))
+print("MAE")
+# Compare MAE:
+print(c("ses:", mean(abs(S03Var05_ses), na.rm=TRUE)))
+print(c("Holt:", mean(abs(S03Var05_holt), na.rm=TRUE)))
+print(c("Holt damped:", mean(abs(S03Var05_holtdmpd), na.rm=TRUE)))
+```
+
+
+Simple Exponential Smoothing method is best whether you compare MSE values.
+Holt damped is slightly better than SES for MAE value but the improvement is not high enough to justify the added complexity. 
+So we will proceed with using the SES method and apply it to the whole data set to get forecasts for future periods.
+
+
+```{r}
+# Random walk forecasts without drift
+S03Var05_rwf <- rwf(S03Var05.ts, h = 140)
+#S03Var05_drwf <- rwf(S03Var05.ts, h = 140, drift = TRUE)
+#S03Var05_mean <- meanf(S03Var05.ts, h = 140)
+# Exponential Smoothing Forecast
+S03Var05_ses <- ses(S03Var05.ts, h = 140)
+autoplot(S03Var05.ts) +
+  autolayer(S03Var05_rwf, series = "Naive", PI = FALSE) +
+  #autolayer(S03Var05_drwf, series = "Drift", PI = FALSE) +
+  #autolayer(S03Var05_mean, series = "Mean", PI = FALSE) +
+  autolayer(S03Var05_ses, series = "Ses", PI = FALSE)
+```
+
+Both simple exponential smoothing and naive random walk methods provide identical forcasts.
+
+
+
+```{r}
+# Exponential Smoothing: Check for alpha
+
+S03Var05_ses <- ses(S03Var05.ts, h = 140)
+S03Var05_ses[["model"]]
+```
+
+The value of alpha of $\alpha = 0.8471$ is very close to one, showing that the level reacts strongly to each new observation. This also makes the ses method almost indistinguishable fom random walk forecast.
+
+
+```{r}
+# Estimate parameters
+summary(S03Var05_ses)
+```
+
+
+ S03Var07
+
+```{r}
+S03Var07_ses <- tsCV(S03Var07.ts, ses, h=140)
+S03Var07_holt <- tsCV(S03Var07.ts, holt, h=140)
+S03Var07_holtdmpd <- tsCV(S03Var07.ts, holt, damped=TRUE, h=140)
+print("S03Var07")
+print("MSE")
+# Compare MSE:
+print(c("ses:", mean(S03Var07_ses^2, na.rm=TRUE)))
+print(c("Holt:", mean(S03Var07_holt^2, na.rm=TRUE)))
+print(c("Holt damped:", mean(S03Var07_holtdmpd^2, na.rm=TRUE)))
+print("MAE")
+# Compare MAE:
+print(c("ses:", mean(abs(S03Var07_ses), na.rm=TRUE)))
+print(c("Holt:", mean(abs(S03Var07_holt), na.rm=TRUE)))
+print(c("Holt damped:", mean(abs(S03Var07_holtdmpd), na.rm=TRUE)))
+```
+
+
+Simple Exponential Smoothing method is best whether you compare MSE values.
+Holt damped is slightly better than ses for MAE value but the improvement is not high enough to justify the added complexity. 
+So we will proceed with using the SES method and apply it to the whole data set to get forecasts for future periods.
+
+
+```{r}
+# Random walk forecasts without drift
+S03Var07_rwf <- rwf(S03Var07.ts, h = 140)
+#S03Var07_drwf <- rwf(S03Var07.ts, h = 140, drift = TRUE)
+#S03Var07_mean <- meanf(S03Var07.ts, h = 140)
+# Exponential Smoothing Forecast
+S03Var07_ses <- ses(S03Var07.ts, h = 140)
+autoplot(S03Var07.ts) +
+  autolayer(S03Var07_rwf, series = "Naive", PI = FALSE) +
+  #autolayer(S03Var07_drwf, series = "Drift", PI = FALSE) +
+  #autolayer(S03Var07_mean, series = "Mean", PI = FALSE) +
+  autolayer(S03Var07_ses, series = "Ses", PI = FALSE)
+```
+
+Both simple exponential smoothing and naive random walk methods provide identical forcasts with ses having a slight edge.
+
+
+
+```{r}
+# Exponential Smoothing: Check for alpha
+S03Var07_ses <- ses(S03Var07.ts, h = 140)
+S03Var07_ses[["model"]]
+```
+
+The value of alpha of $\alpha = 0.9999$ is very close to one, showing that the level reacts strongly to each new observation. This also makes the ses method almost indistinguishable fom random walk forecast.
+
+
+```{r}
+# Estimate parameters
+summary(S03Var07_ses)
+```
+
+S04 Var01, Var02
+S05 Var 02
+
+```{r}
+all_set <- read.csv("https://raw.githubusercontent.com/lincarrieli/Data624/main/Project1_Group2.csv", header = TRUE)
+s04 <- subset(all_set, group == "S04")
+s05 <- subset(all_set, group == "S05")
+```
+
+```{r}
+s04Var01 <- s04$Var01
+s04Var02 <- s04$Var02
+s05Var02 <- s05$Var02
+```
+
+Initial visualization for S04 Var02, Var03 and S04 Var 02
+```{r}
+s04 %>%
+  ggplot(aes(x=SeriesInd, y=Var01)) + geom_line() + ggtitle("s04Var01")
+s04 %>%
+  ggplot(aes(x=SeriesInd, y=Var02)) + geom_line() + ggtitle("s04Var02")
+s05 %>%
+  ggplot(aes(x=SeriesInd, y=Var02)) + geom_line() + ggtitle("s05Var02")
+```
+
+
+```{r}
+library(tseries)
+library(tidyverse)
+library(fpp2)
+library(readxl)
+s04Var01.ts <- ts(s04Var01, frequency = 365)
+s04Var01.ts1 <- na.remove(s04Var01.ts)
+s04Var01.ts1 %>%
+  decompose(type="multiplicative")%>%
+  autoplot() + xlab("Time") +
+  ggtitle("Classical multiplicative decomposition of s04Var01")
+```
+```{r}
+s04Var02.ts <- ts(s04Var02, frequency = 365)
+s04Var02.ts %>%
+  decompose(type="multiplicative") %>%
+  autoplot() + xlab("Time") +
+  ggtitle("Classical multiplicative decomposition of s04Var02")
+```
+
+
+```{r}
+s05Var02.ts <- ts(s05Var02, frequency = 365)
+s05Var02.ts1 <- na.remove(s05Var02.ts)
+s05Var02.ts1 %>%
+  decompose(type="multiplicative") %>%
+  autoplot() + xlab("Time") +
+  ggtitle("Classical multiplicative decomposition of s04Var02")
+```
+
+Each variable seems to display distinct characteristics. s04Var02 has no apparent trend but do exhibit seasonality based on the decomposition plot; it also has a few outliers. s04Var03 has a upward trend and starting to go downward with clear seasonality. s05Var02 shows a downward trend at the beginning of the series and seemed to remine flat before starting to go upward; three extreme outliers can be observed from the plot.
+
+Examine the nature of gaps/missing values. Using the approach of computing the =average squared difference across gaps
+
+```{r}
+SeriesInd.ts <- ts(s04$SeriesInd)
+gaps <- diff(SeriesInd.ts) > 1
+gaps <- c(FALSE, gaps)
+gaps.df <- data.frame("SeriesInd" = s04$SeriesInd, "AfterGap" = gaps)
+gaps.df <- gaps.df %>%
+  mutate("s04Var01" = s04$Var01, "s04Var01.diff" = s04$Var01 - lag(s04$Var01))
+sqdiff_across_gaps_s04Var01 <- gaps.df %>%
+  filter(AfterGap) %>%
+  filter(s04Var01.diff > -50) %>%
+  select(s04Var01.diff)
+sqdiff_across_gaps_s04Var01 <- sqdiff_across_gaps_s04Var01^2
+sqdiff_across_gaps_s04Var01 <-
+  mean(sqdiff_across_gaps_s04Var01$s04Var01.diff)
+sqdiff_across_gaps_s04Var01
+```
+
+Computing the average squared difference between successive entries for s04Var01:
+
+```{r}
+sqdiff_across_all <- gaps.df %>%
+  filter(s04Var01.diff < 50) %>%
+  select(s04Var01.diff)
+sqdiff_across_all <- sqdiff_across_all^2
+sqdiff_across_all <- mean(sqdiff_across_all$s04Var01.diff)
+sqdiff_across_all
+```
+
+The small difference in values of mean squared difference between gaps and successive values are small enough to suggest a pause in data generating process, and not missing data.
+
+
+```{r}
+s04Var01.ts <-ts(s04Var01)
+autoplot(s04Var01.ts) +
+  xlab("Day") +
+  ylab("Value") +
+  ggtitle("Daily Value of s04Var01")
+s04Var02.ts <- s04 %>%
+  filter(Var02 < 15000000) %>%
+  select(Var02) %>%
+  ts()
+autoplot(s04Var02.ts) +
+  xlab("Day") +
+  ylab("Value") +
+  ggtitle("Daily Value of s04Var02")
+s05Var02.ts <- s05 %>%
+  filter(Var02 < 15000000) %>%
+  select(Var02) %>%
+  ts()
+autoplot(s05Var02.ts) +
+  xlab("Day") +
+  ylab("Value") +
+  ggtitle("Daily Value of s05Var02")
+```
+
+```{r}
+library(forecast)
+library(ggplot2)
+s04Var01_rwf <- rwf(s04Var01.ts, h = 140)
+s04Var02_rwf <- rwf(s04Var02.ts, h = 140)
+s05Var02_rwf <- rwf(s05Var02.ts, h = 140)
+s04Var01_drwf <- rwf(s04Var01.ts, h = 140, drift = TRUE)
+s04Var02_drwf <- rwf(s04Var02.ts, h = 140, drift = TRUE)
+s05Var02_drwf <- rwf(s04Var02.ts, h = 140, drift = TRUE)
+#s04Var01_mean <- mean(s04Var01.ts, h = 140)
+#s04Var02_mean <- mean(s04Var02.ts, h = 140)
+#s05Var02_mean <- mean(s05Var02.ts, h = 140)
+autoplot(s04Var01.ts) +
+  autolayer(s04Var01_rwf, series = "Naive", PI = FALSE) +
+  autolayer(s04Var01_drwf, series = "Drift", PI = FALSE) 
+ 
+autoplot(s04Var02.ts) +
+  autolayer(s04Var02_rwf, series = "Naive", PI = FALSE) +
+  autolayer(s04Var02_drwf, series = "Drift", PI = FALSE)
+autoplot(s05Var02.ts) +
+  autolayer(s05Var02_rwf, series = "Naive", PI = FALSE) +
+  autolayer(s05Var02_drwf, series = "Drift", PI = FALSE) 
+  
+  
+```
+```{r}
+s04Var01_rmse_rwf_nodrift <- tsCV(s04Var01.ts, rwf, drift = FALSE, h = 1)
+s04Var01_rmse_rwf_nodrift <- sqrt(mean(s04Var01_rmse_rwf_nodrift^2, na.rm = TRUE))
+s04Var01_rmse_rwf_drift <- tsCV(s04Var01.ts, rwf, drift = TRUE, h = 1)
+s04Var01_rmse_rwf_drift <- sqrt(mean(s04Var01_rmse_rwf_drift^2, na.rm = TRUE))
+s04Var02_rmse_rwf_nodrift <- tsCV(s04Var02.ts, rwf, drift = FALSE, h = 1)
+s04Var02_rmse_rwf_nodrift <- sqrt(mean(s04Var02_rmse_rwf_nodrift^2, na.rm = TRUE))
+s04Var02_rmse_rwf_drift <- tsCV(s04Var02.ts, rwf, drift = TRUE, h = 1)
+s04Var02_rmse_rwf_drift <- sqrt(mean(s04Var02_rmse_rwf_drift^2, na.rm = TRUE))
+s05Var02_rmse_rwf_nodrift <- tsCV(s05Var02.ts, rwf, drift = FALSE, h = 1)
+s05Var02_rmse_rwf_nodrift <- sqrt(mean(s05Var02_rmse_rwf_nodrift^2, na.rm = TRUE))
+s05Var02_rmse_rwf_drift <- tsCV(s05Var02.ts, rwf, drift = TRUE, h = 1)
+s05Var02_rmse_rwf_drift <- sqrt(mean(s05Var02_rmse_rwf_drift^2, na.rm = TRUE))
+```
+
+```{r}
+s04Var01_rmse_rwf_nodrift
+s04Var01_rmse_rwf_drift
+s04Var02_rmse_rwf_nodrift
+s04Var02_rmse_rwf_drift 
+s05Var02_rmse_rwf_nodrift
+s05Var02_rmse_rwf_drift
+```
+For all models, the better performing model is random walk with no drift.
+
+Exponential soomthing is suitable for data with clear trend or seasonality, and Holt’s linear trend method allows the forecasting of data with a trend. I  apply apply both methods to all three variables and would expect Exponential smoothing would better fit s04Var02, and Holt's would fit better with s04Var01 and s05Var02.
+
+```{r}
+s04Var02_ses <- ses(s04Var02.ts, h = 140)
+summary(s04Var02_ses)
+```
+
+```{r}
+s05Var02_ses <- ses(s05Var02.ts, h = 140)
+summary(s05Var02_ses)
+```
+The optimized simple exponential smoothing method computed $\alpha = 0.9999$, making this method almost indistinguishable from the random-walk forecast.
+
+```{r}
+s04Var02_ses <- ses(s04Var02.ts, h = 140)
+summary(s04Var02_ses)
+```
+
+```{r}
+s05Var02_ses <- ses(s05Var02.ts, h = 140)
+summary(s05Var02_ses)
+```
+For s04Var02 and s05Var02, the $\alpha = 0.4$, indicating that some weight is given to observations from the more distant past.
+```{r}
+s04Var02_1.ts <- s04Var02.ts %>%
+  na.remove()
+s04Var02_ses <- ses(s04Var02_1.ts, h = 140)
+autoplot(s04Var02_ses) +
+  autolayer(fitted(s04Var02_ses), series="Fitted") +
+  ylab("Value") + xlab("Day")
+```
+```{r}
+s05Var02_1.ts <- s05Var02.ts %>%
+  na.remove()
+s05Var02_ses <- ses(s05Var02_1.ts, h = 140)
+autoplot(s05Var02_ses) +
+  autolayer(fitted(s05Var02_ses), series="Fitted") +
+  ylab("Value") + xlab("Day")
+```
+```{r}
+s04VAr01_hw <- holt(s04Var01.ts1,
+         damped = TRUE, h=140)
+autoplot(s04VAr01_hw) +
+  autolayer(s04VAr01_hw, series="Hold", PI=FALSE)+
+  guides(colour=guide_legend(title="Daily forecasts of s04Var01"))
+s04VAr02_hw <- holt(s04Var02.ts,
+         damped = TRUE, h=140)
+autoplot(s04VAr02_hw) +
+  autolayer(s04VAr02_hw, series="Hold", PI=FALSE)+
+  guides(colour=guide_legend(title="Daily forecasts of s04Var02"))
+s05VAr02_hw <- holt(s05Var02.ts,
+         damped = TRUE, h=140)
+autoplot(s05VAr02_hw) +
+  autolayer(s05VAr02_hw, series="Hold", PI=FALSE)+
+  guides(colour=guide_legend(title="Daily forecasts of s05Var02"))
+```
+
+
+
+This section contains initial visualizations of S05Var03, S06Var05, and S06Var07. These visualizations provide the basis for initial commentary and suggest a roadmap for the analysis that comprises the remainder of this file.
+
+```{r}
+raw %>%
+  ggplot(aes(x = SeriesInd, y = S05Var03)) +
+  geom_line() +
+  ggtitle("S05Var03")
+raw %>%
+  ggplot(aes(x = SeriesInd, y = S06Var05)) +
+  geom_line() +
+  ggtitle("S06Var05")
+raw %>%
+  ggplot(aes(x = SeriesInd, y = S06Var07)) +
+  geom_line() +
+  ggtitle("S06Var07")
+```
+
+All three variables closely resemble a random walk. The variables from group S06 closely resemble each other. None of the variables exhibits obvious seasonality or cyclicity. None of the variables is stationary. The group S06 variables appear to trend upward after `SeriesInd` = 41250, but because the data are compressed toward the bottom of the grid due to a small number of extreme outliers, it's hard to be sure at this early stage. For all three variables, variability in the data does not appear to depend on the level of the data.
+
+Examining the numeric data reveals gaps in the `SeriesInd` column. These gaps mostly occur at regular intervals, and could represent weekends and holidays in a calendar.
+
+Do the gaps represent a pause in the process that generated this data? Or do the gaps conceal unknown values in the time series? If the average change in value across these gaps is larger than the typical difference between a value and its lag, then there's reason to think these gaps represent missing data. If the average change across these gaps is approximately equal to the typical change from one value to the next, then the gaps probably represent a pause in the data-generating process.
+
+Computing the average squared difference across gaps for S06Var05:
+```{r}
+SeriesInd.ts <- ts(raw$SeriesInd)
+gaps <- diff(SeriesInd.ts) > 1
+gaps <- c(FALSE, gaps)
+gaps.df <- data.frame("SeriesInd" = raw$SeriesInd, "AfterGap" = gaps)
+gaps.df <- gaps.df %>%
+  mutate("S06Var05" = raw$S06Var05, "S06Var05.diff" = raw$S06Var05 - lag(raw$S06Var05))
+sqdiff_across_gaps_S06Var05 <- gaps.df %>%
+  filter(AfterGap) %>%
+  filter(S06Var05.diff > -50) %>%
+  select(S06Var05.diff)
+sqdiff_across_gaps_S06Var05 <- sqdiff_across_gaps_S06Var05^2
+sqdiff_across_gaps_S06Var05 <-
+  mean(sqdiff_across_gaps_S06Var05$S06Var05.diff)
+```
+
+Computing the average squared difference between successive entries for S06Var05:
+```{r}
+sqdiff_across_all <- gaps.df %>%
+  filter(abs(S06Var05.diff) < 50) %>%
+  select(S06Var05.diff)
+sqdiff_across_all <- sqdiff_across_all^2
+sqdiff_across_all <- mean(sqdiff_across_all$S06Var05.diff)
+```
+
+The mean square difference between values across gaps is 0.376, and the mean square difference between all successive values is 0.326. These values are close enough to suggest that missing values in the `SeriesInd` column represent a pause in the data-generating process, rather than missing data. As a result, we can treat this data as if all the measurements are consecutive, with no missing values.
+
+While it's not known what process generated these data, the levels and behavior of the data are similar to those of stock prices. For the purpose of this report, I'll regard each value as a closing stock price of a different company, and I'll regard the `time series`SeriesInd` values as counting days. Restarting the time series at Day = 0 and dropping outliers from the group S06 data gives us the following:
+```{r}
+S05Var03.ts <- ts(raw$S05Var03)
+S06Var05.ts <- raw %>%
+  filter(S06Var05 < 100) %>%
+  select(S06Var05) %>%
+  ts()
+S06Var07.ts <- raw %>%
+  filter(S06Var07 < 100) %>%
+  select(S06Var07) %>%
+  ts()
+autoplot(S05Var03.ts) +
+  xlab("Day") +
+  ylab("Closing Price (USD)") +
+  ggtitle("Daily Closing Price of S05Var03")
+autoplot(S06Var05.ts) +
+  xlab("Day") +
+  ylab("Closing Price (USD)") +
+  ggtitle("Daily Closing Price of S06Var05")
+autoplot(S06Var07.ts) +
+  xlab("Day") +
+  ylab("Closing Price (USD)") +
+  ggtitle("Daily Closing Price of S06Var07")
+```
+
+How similar are the time series representing S06Var05 and S06Var07?
+
+```{r}
+autoplot(S06Var05.ts-S06Var07.ts) +
+  xlab("Day") +
+  ylab("Difference in price (USD)") +
+  ggtitle("Daily difference in prices, S06Var05 and S06Var07")
+```
+
+Differences in price are white noise centered at zero. The range of these differences is small compared to the level of each variable. For this reason, I'll restrict the analysis to only S06Var05, and then apply the best model for S06Var05 to S06Var07 as well.
+
+## Simple forecasts
+
+Because "a naive forecast is optimal when data follow a random walk" (HA 3.1), I compute some simple forecasts for each variable before performing more complex analysis. The performance of these simple models will provide a benchmark for performance of more sophisticated models. In the event of a tie, I'll favor these simpler models.
+
+```{r}
+S05Var03_rwf <- rwf(S05Var03.ts, h = 140)
+S06Var05_rwf <- rwf(S06Var05.ts, h = 140)
+S06Var07_rwf <- rwf(S06Var07.ts, h = 140)
+S05Var03_drwf <- rwf(S05Var03.ts, h = 140, drift = TRUE)
+S06Var05_drwf <- rwf(S06Var05.ts, h = 140, drift = TRUE)
+S06Var07_drwf <- rwf(S06Var07.ts, h = 140, drift = TRUE)
+S05Var03_mean <- meanf(S05Var03.ts, h = 140)
+S06Var05_mean <- meanf(S06Var05.ts, h = 140)
+S06Var07_mean <- meanf(S06Var07.ts, h = 140)
+autoplot(S05Var03.ts) +
+  autolayer(S05Var03_rwf, series = "Naive", PI = FALSE) +
+  autolayer(S05Var03_drwf, series = "Drift", PI = FALSE) +
+  autolayer(S05Var03_mean, series = "Mean", PI = FALSE)
+autoplot(S06Var05.ts) +
+  autolayer(S06Var05_rwf, series = "Naive", PI = FALSE) +
+  autolayer(S06Var05_drwf, series = "Drift", PI = FALSE) +
+  autolayer(S06Var05_mean, series = "Mean", PI = FALSE)
+```
+
+Evaluating performance of simple models using cross-validation and RMSE:
+```{r}
+S05Var03_rmse_rwf_nodrift <- tsCV(S05Var03.ts, rwf, drift = FALSE, h = 1)
+S05Var03_rmse_rwf_nodrift <- sqrt(mean(S05Var03_rmse_rwf_nodrift^2, na.rm = TRUE))
+S05Var03_rmse_rwf_drift <- tsCV(S05Var03.ts, rwf, drift = TRUE, h = 1)
+S05Var03_rmse_rwf_drift <- sqrt(mean(S05Var03_rmse_rwf_drift^2, na.rm = TRUE))
+S05Var03_rmse_meanf <- tsCV(S05Var03.ts, meanf, h = 1)
+S05Var03_rmse_meanf <- sqrt(mean(S05Var03_rmse_meanf^2, na.rm = TRUE))
+S06Var05_rmse_rwf_nodrift <- tsCV(S06Var05.ts, rwf, drift = FALSE, h = 1)
+S06Var05_rmse_rwf_nodrift <- sqrt(mean(S06Var05_rmse_rwf_nodrift^2, na.rm = TRUE))
+S06Var05_rmse_rwf_drift <- tsCV(S06Var05.ts, rwf, drift = TRUE, h = 1)
+S06Var05_rmse_rwf_drift <- sqrt(mean(S06Var05_rmse_rwf_drift^2, na.rm = TRUE))
+S06Var05_rmse_meanf <- tsCV(S06Var05.ts, meanf, h = 1)
+S06Var05_rmse_meanf <- sqrt(mean(S06Var05_rmse_meanf^2, na.rm = TRUE))
+```
+
+For both S05Var03 and S06Var05, the best-performing model is the random walk forecast with no drift. For S05Var03, RMSE = 0.9037. For S06Var05, RMSE = 0.5712.
+
+## Exponential smoothing
+
+Below, I fit a simple exponential smoothing method.
+
+```{r R.options = list(max.print = 15)}
+S05Var03_ses <- ses(S05Var03.ts, h = 140)
+summary(S05Var03_ses)
+```
+
+The optimized simple exponential smoothing method computed $\alpha = 0.9999$, making this method almost indistinguishable from the random-walk forecast. It offers a tiny improvement in performance when measured as RMSE, but this improvement is not sufficient to justify a more complex model.
+
+```{r R.options = list(max.print = 15)}
+S06Var05_ses <- ses(S06Var05.ts, h = 140)
+summary(S06Var05_ses)
+```
+
+For S06Var05, $\alpha = 0.8676$, indicating that optimal simple exponential smoothing does take some account of values earlier than lag-1. Similar to SES's performance with S05Var03, SES offers only a very small performance gain over the random-walk forecast. This small gain is not sufficient to justify a more complex model.
+
+Does allowing for drift and damping improve the performance of the exponential smoothing models?
+
+```{r R.options = list(max.print = 15)}
+S05Var03_holt <- holt(S05Var03.ts, h = 140, damped = TRUE)
+S06Var05_holt <- holt(S06Var05.ts, h = 140, damped = TRUE)
+summary(S05Var03_holt)
+summary(S06Var05_holt)
+```
+
+For the S05Var03 series, an exponential smoothing model with damping and drift performs marginally better than the random walk forecast with no drift. For this data, the optimal choice for $\alpha$ is almost 1, indicating that forecast values are almost entirely dependent only on their lag-1. $\phi = 0.8$. This is a low value that rapidly damps forecasts. Together, the high value of $\alpha$ and the low value of $\phi$ suggest that exponential smoothing with damping and drift don't offer much additional insight above the simple random walk forecast.
+
+The parameters for the optimal model for the S06Var05 data are somewhat different, with $\alpha = 0.8679$ and $\phi = 0.9733$. This suggests that values earlier than lag-1 carry some importance in generating forecasts, and that damping at a more gradual pace is optimal. Still, RMSE improves only marginally with this more complex model. Simple random walk forecasts with no drift are still the top contenders for all three variables under examination.
+
+## ARIMA models
+
+ARIMA models are generally restricted to stationary data. The most common technique for producing stationary data from a trended dataset such as this one is to perform first-differencing. We then perform a Box-Ljung test on the differenced data to determine whether the result is stationary.
+
+Differenced data:
+
+```{r}
+autoplot(diff(S05Var03.ts)) +
+  xlab("Day") +
+  ylab("Day-over-day difference in closing price (USD)") +
+  ggtitle("First-differenced closing prices for S05Var03")
+autoplot(diff(S06Var05.ts)) +
+  xlab("Day") +
+  ylab("Day-over-day difference in closing price (USD)") +
+  ggtitle("First-differenced closing prices for S06Var05")
+```
+
+For both variables, this data does appear to be stationary-- it has mean near zero, and its variability does not appear to change over time. The values appear to be random. What do the ACF plots show?
+
+```{r}
+autoplot(Acf(diff(S05Var03.ts))) +
+  ggtitle("ACF plot for S05Var03")
+autoplot(Acf(diff(S06Var05.ts))) +
+  ggtitle("ACF plot for S06Var05")
+```
+
+The ACF plots shows many significant lags, which suggest the differenced data may not be stationary.
+
+```{r}
+autoplot(Pacf(diff(S05Var03.ts))) +
+  ggtitle("PACF plot for S05Var03")
+autoplot(Pacf(diff(S06Var05.ts))) +
+  ggtitle("PACF plot for S06Var05")
+```
+
+The PACF plots also show several significant values, further casting doubt on the stationarity of this data. A portmanteau test confirms our suspicion:
+
+```{r}
+Box.test(diff(S05Var03.ts, differences = 2), type = 'Ljung-Box')
+Box.test(diff(S06Var05.ts, differences = 2), type = 'Ljung-Box')
+```
+
+The Box-Ljung test confirms that the data should not be considered  stationary. Even after two rounds of differencing, the null hypothesis that each observation is independent of its lag is rejected, with a p-value near 0.
+
+Let's fit an ARIMA model anyway. Since the visual appearance of stationarity is so striking, it might be that the data is close enough to satisfying the assumptions that the model still proves useful.
+
+```{r}
+S05Var03_arima <- auto.arima(S05Var03.ts)
+S06Var05_arima <- auto.arima(S06Var05.ts)
+summary(S05Var03_arima)
+summary(S06Var05_arima)
+```
+
+For S05Var03, RMSE for the ARIMA(0,1,2) model is 0.8963. For S06Var05, RMSE for ARIMA(2,1,2) is 0.5637. As with the damped and trended exponential smoothing methods, these models give marginal improvements in RMSE. However, these small improvements are not sufficient to justify their use as forecasting models, since they're complicated relative to simple forecasting methods.
+
+Had ARIMA models provided a greater reduction in RMSE, then we would proceed from here to an analysis of residuals.
+
+## Conclusion
+
+For the variables S05Var03, S06Var05, and S06Var07, the best forecasting model is a random walk forecast without drift. The forecast value for all future times is the most recent value of the time series. As time extends into the future, prediction intervals for these forecasts become wider:
+
+```{r}
+autoplot(S05Var03.ts) +
+  autolayer(S05Var03_rwf, series = "Naive", PI = TRUE) +
+  xlab("Day") +
+  ylab("Closing price (USD)") +
+  ggtitle("Forecasts and prediction intervals for S05Var03")
+```
+
+```{r}
+autoplot(S06Var05.ts) +
+  autolayer(S06Var05_rwf, series = "Naive", PI = TRUE) +
+  xlab("Day") +
+  ylab("Closing price (USD)") +
+  ggtitle("Forecasts and prediction intervals for S06Var05")
+```
+
+```{r}
+autoplot(S06Var07.ts) +
+  autolayer(S06Var07_rwf, series = "Naive", PI = TRUE) +
+  xlab("Day") +
+  ylab("Closing price (USD)") +
+  ggtitle("Forecasts and prediction intervals for S06Var07")
+```
+
+This is consistent with reasonable expectations for stock market price data, which are notoriously resistant to time series forecasting methods. If we had more information about this data-- such as information about the process that generated it, or historical data further into the past-- it might have been possible to take better advantage of methods incorporating trend. Over the relatively short horizon of this data set, though, long-run trends that appear in stock prices were not wholly evident.
+
+For all future times, the forecast values for each variable are given below.
+
+```{r R.options = list(max.print = 15)}
+S05Var03_rwf_fc <- forecast(S05Var03_rwf, h = 140)
+print(S05Var03_rwf_fc)
+S06Var05_rwf_fc <- forecast(S06Var05_rwf, h = 140)
+print(S06Var05_rwf_fc)
+S06Var07_rwf_fc <- forecast(S06Var07_rwf, h = 140)
+print(S06Var07_rwf_fc)
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
