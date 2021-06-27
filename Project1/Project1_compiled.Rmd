@@ -1,6 +1,6 @@
 ---
 title: "Project_1_compiled"
-author: "Patrick Maloney"
+author: "Samuel Kigamba, Lin Li, Patrick Maloney, Daniel Moscoe, David Moste"
 date: "6/27/2021"
 output:
   word_document: default
