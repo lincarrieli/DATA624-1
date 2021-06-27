@@ -20,7 +20,7 @@ library(tseries)
 # This analysis covers "S02Var03" "S03Var05" & "S03Var07"
 
 ```{r}
-df <- read.csv("https://raw.githubusercontent.com/dmoste/DATA624/main/raw_data.csv", header = TRUE)
+df <- read.csv("https://raw.githubusercontent.com/dmoste/DATA624/main/Project1/raw_data.csv", header = TRUE)
 head(df)
 
 ```
@@ -62,27 +62,27 @@ raw %>%
 # Convert to time series
 
 SeriesInd.ts <- ts(raw$SeriesInd)
-X.ts <- na.remove(ts(raw$S02Var03, frequency = 253))
-Y.ts <- na.remove(ts(raw$S03Var05, frequency = 253))
-Z.ts <- na.remove(ts(raw$S03Var07, frequency = 253))
+S02Var03.ts <- na.remove(ts(raw$S02Var03, frequency = 253))
+S03Var05.ts <- na.remove(ts(raw$S03Var05, frequency = 253))
+S03Var07.ts <- na.remove(ts(raw$S03Var07, frequency = 253))
 
 ```
 
 Decompose data and check for trend and seasonality
 
 ```{r}
-X.ts %>%
+S02Var03.ts %>%
   decompose(type="multiplicative")%>%
   autoplot() + xlab("Time") +
   ggtitle("Decomposition of S02Var03")
 
-Y.ts %>%
+S03Var05.ts %>%
   decompose(type="multiplicative") %>%
   autoplot() + xlab("Time") +
   ggtitle("Decomposition of S03Var05")
 
 
-Z.ts %>%
+S03Var07.ts %>%
   decompose(type="multiplicative") %>%
   autoplot() + xlab("Time") +
   ggtitle("Decomposition of S03Var07")
@@ -95,42 +95,42 @@ None of the three variables exhibits obvious seasonality or cyclicity. S02Var03 
 Evaluating performance of simple models using cross-validation and RMSE:
 
 ```{r}
-X_rmse_rwf_nodrift <- tsCV(X.ts, rwf, drift = FALSE, h = 1)
-X_rmse_rwf_nodrift <- sqrt(mean(X_rmse_rwf_nodrift^2, na.rm = TRUE))
-X_rmse_rwf_drift <- tsCV(X.ts, rwf, drift = TRUE, h = 1)
-X_rmse_rwf_drift <- sqrt(mean(X_rmse_rwf_drift^2, na.rm = TRUE))
-X_rmse_meanf <- tsCV(X.ts, meanf, h = 1)
-X_rmse_meanf <- sqrt(mean(X_rmse_meanf^2, na.rm = TRUE))
+S02Var03_rmse_rwf_nodrift <- tsCV(S02Var03.ts, rwf, drift = FALSE, h = 1)
+S02Var03_rmse_rwf_nodrift <- sqrt(mean(S02Var03_rmse_rwf_nodrift^2, na.rm = TRUE))
+S02Var03_rmse_rwf_drift <- tsCV(S02Var03.ts, rwf, drift = TRUE, h = 1)
+S02Var03_rmse_rwf_drift <- sqrt(mean(S02Var03_rmse_rwf_drift^2, na.rm = TRUE))
+S02Var03_rmse_meanf <- tsCV(S02Var03.ts, meanf, h = 1)
+S02Var03_rmse_meanf <- sqrt(mean(S02Var03_rmse_meanf^2, na.rm = TRUE))
 
-Y_rmse_rwf_nodrift <- tsCV(Y.ts, rwf, drift = FALSE, h = 1)
-Y_rmse_rwf_nodrift <- sqrt(mean(Y_rmse_rwf_nodrift^2, na.rm = TRUE))
-Y_rmse_rwf_drift <- tsCV(Y.ts, rwf, drift = TRUE, h = 1)
-Y_rmse_rwf_drift <- sqrt(mean(Y_rmse_rwf_drift^2, na.rm = TRUE))
-Y_rmse_meanf <- tsCV(Y.ts, meanf, h = 1)
-Y_rmse_meanf <- sqrt(mean(Y_rmse_meanf^2, na.rm = TRUE))
+S03Var05_rmse_rwf_nodrift <- tsCV(S03Var05.ts, rwf, drift = FALSE, h = 1)
+S03Var05_rmse_rwf_nodrift <- sqrt(mean(S03Var05_rmse_rwf_nodrift^2, na.rm = TRUE))
+S03Var05_rmse_rwf_drift <- tsCV(S03Var05.ts, rwf, drift = TRUE, h = 1)
+S03Var05_rmse_rwf_drift <- sqrt(mean(S03Var05_rmse_rwf_drift^2, na.rm = TRUE))
+S03Var05_rmse_meanf <- tsCV(S03Var05.ts, meanf, h = 1)
+S03Var05_rmse_meanf <- sqrt(mean(S03Var05_rmse_meanf^2, na.rm = TRUE))
 
-Z_rmse_rwf_nodrift <- tsCV(Z.ts, rwf, drift = FALSE, h = 1)
-Z_rmse_rwf_nodrift <- sqrt(mean(Z_rmse_rwf_nodrift^2, na.rm = TRUE))
-Z_rmse_rwf_drift <- tsCV(Z.ts, rwf, drift = TRUE, h = 1)
-Z_rmse_rwf_drift <- sqrt(mean(Z_rmse_rwf_drift^2, na.rm = TRUE))
-Z_rmse_meanf <- tsCV(Z.ts, meanf, h = 1)
-Z_rmse_meanf <- sqrt(mean(Z_rmse_meanf^2, na.rm = TRUE))
+S03Var07_rmse_rwf_nodrift <- tsCV(S03Var07.ts, rwf, drift = FALSE, h = 1)
+S03Var07_rmse_rwf_nodrift <- sqrt(mean(S03Var07_rmse_rwf_nodrift^2, na.rm = TRUE))
+S03Var07_rmse_rwf_drift <- tsCV(S03Var07.ts, rwf, drift = TRUE, h = 1)
+S03Var07_rmse_rwf_drift <- sqrt(mean(S03Var07_rmse_rwf_drift^2, na.rm = TRUE))
+S03Var07_rmse_meanf <- tsCV(S03Var07.ts, meanf, h = 1)
+S03Var07_rmse_meanf <- sqrt(mean(S03Var07_rmse_meanf^2, na.rm = TRUE))
 
 ```
 
 ```{r}
 
-X_rmse_rwf_nodrift
-X_rmse_rwf_drift
-X_rmse_meanf
+S02Var03_rmse_rwf_nodrift
+S02Var03_rmse_rwf_drift
+S02Var03_rmse_meanf
 
-Y_rmse_rwf_nodrift
-Y_rmse_rwf_drift
-Y_rmse_meanf
+S03Var05_rmse_rwf_nodrift
+S03Var05_rmse_rwf_drift
+S03Var05_rmse_meanf
 
-Z_rmse_rwf_nodrift
-Z_rmse_rwf_drift
-Z_rmse_meanf
+S03Var07_rmse_rwf_nodrift
+S03Var07_rmse_rwf_drift
+S03Var07_rmse_meanf
 
 ```
 
@@ -141,30 +141,30 @@ We will use time series cross-validation to compare the one-step forecast accura
 # S02Var03
 
 ```{r}
-X1 <- tsCV(X.ts, ses, h=140)
-X2 <- tsCV(X.ts, holt, h=140)
-X3 <- tsCV(X.ts, holt, damped=TRUE, h=140)
+S02Var03_ses <- tsCV(S02Var03.ts, ses, h=140)
+S02Var03_holt <- tsCV(S02Var03.ts, holt, h=140)
+S02Var03_holtdmpd <- tsCV(S02Var03.ts, holt, damped=TRUE, h=140)
 
 print("S02Var03")
 print("MSE")
 
 # Compare MSE:
 
-print(c("ses:", mean(X1^2, na.rm=TRUE)))
+print(c("ses:", mean(S02Var03_ses^2, na.rm=TRUE)))
 
-print(c("Holt:", mean(X2^2, na.rm=TRUE)))
+print(c("Holt:", mean(S02Var03_holt^2, na.rm=TRUE)))
 
-print(c("Holt damped:", mean(X3^2, na.rm=TRUE)))
+print(c("Holt damped:", mean(S02Var03_holtdmpd^2, na.rm=TRUE)))
 
 
 print("MAE")
 # Compare MAE:
 
-print(c("ses:", mean(abs(X1), na.rm=TRUE)))
+print(c("ses:", mean(abs(S02Var03_ses), na.rm=TRUE)))
 
-print(c("Holt:", mean(abs(X2), na.rm=TRUE)))
+print(c("Holt:", mean(abs(S02Var03_holt), na.rm=TRUE)))
 
-print(c("Holt damped:", mean(abs(X3), na.rm=TRUE)))
+print(c("Holt damped:", mean(abs(S02Var03_holtdmpd), na.rm=TRUE)))
 
 ```
 
@@ -176,24 +176,24 @@ We will also include the three
 
 ```{r}
 
-X.ts <- raw %>%
+S02Var03.ts <- raw %>%
   filter(S02Var03 < 20) %>%
   select(S02Var03) %>%
   ts()
 
 # Random walk forecasts without drift
-X_rwf <- rwf(X.ts, h = 140)
-#X_drwf <- rwf(X.ts, h = 140, drift = TRUE)
-#X_mean <- meanf(X.ts, h = 140)
+S02Var03_rwf <- rwf(S02Var03.ts, h = 140)
+#S02Var03_drwf <- rwf(S02Var03.ts, h = 140, drift = TRUE)
+#S02Var03_mean <- meanf(S02Var03.ts, h = 140)
 
 # Exponential Smoothing forecast
-X_ses <- ses(X.ts, h = 140)
+S02Var03_ses <- ses(S02Var03.ts, h = 140)
 
-autoplot(X.ts) +
-  autolayer(X_rwf, series = "Naive", PI = FALSE) +
-  #autolayer(X_drwf, series = "Drift", PI = FALSE) +
-  #autolayer(X_mean, series = "Mean", PI = FALSE) +
-  autolayer(X_ses, series = "Ses", PI = FALSE)
+autoplot(S02Var03.ts) +
+  autolayer(S02Var03_rwf, series = "Naive", PI = FALSE) +
+  #autolayer(S02Var03_drwf, series = "Drift", PI = FALSE) +
+  #autolayer(S02Var03_mean, series = "Mean", PI = FALSE) +
+  autolayer(S02Var03_ses, series = "Ses", PI = FALSE)
 
 ```
 
@@ -204,8 +204,8 @@ Both simple exponential smoothing and naive random walk methods provide identica
 
 ```{r}
 
-X_ses <- ses(X.ts, h = 140)
-X_ses[["model"]]
+S02Var03_ses <- ses(S02Var03.ts, h = 140)
+S02Var03_ses[["model"]]
 
 ```
 
@@ -216,7 +216,7 @@ The value of alpha of $\alpha = 0.9999$ is very close to one, showing that the l
 
 # Estimate parameters
 
-summary(X_ses)
+summary(S02Var03_ses)
 
 ```
 
@@ -226,9 +226,9 @@ summary(X_ses)
 
 ```{r}
 
-Y1 <- tsCV(Y.ts, ses, h=140)
-Y2 <- tsCV(Y.ts, holt, h=140)
-Y3 <- tsCV(Y.ts, holt, damped=TRUE, h=140)
+S03Var05_ses <- tsCV(S03Var05.ts, ses, h=140)
+S03Var05_holt <- tsCV(S03Var05.ts, holt, h=140)
+S03Var05_holtdmpd <- tsCV(S03Var05.ts, holt, damped=TRUE, h=140)
 
 
 print("S03Var05")
@@ -236,22 +236,22 @@ print("MSE")
 
 # Compare MSE:
 
-print(c("ses:", mean(Y1^2, na.rm=TRUE)))
+print(c("ses:", mean(S03Var05_ses^2, na.rm=TRUE)))
 
-print(c("Holt:", mean(Y2^2, na.rm=TRUE)))
+print(c("Holt:", mean(S03Var05_holt^2, na.rm=TRUE)))
 
-print(c("Holt damped:", mean(Y3^2, na.rm=TRUE)))
+print(c("Holt damped:", mean(S03Var05_holtdmpd^2, na.rm=TRUE)))
 
 
 print("MAE")
 
 # Compare MAE:
 
-print(c("ses:", mean(abs(Y1), na.rm=TRUE)))
+print(c("ses:", mean(abs(S03Var05_ses), na.rm=TRUE)))
 
-print(c("Holt:", mean(abs(Y2), na.rm=TRUE)))
+print(c("Holt:", mean(abs(S03Var05_holt), na.rm=TRUE)))
 
-print(c("Holt damped:", mean(abs(Y3), na.rm=TRUE)))
+print(c("Holt damped:", mean(abs(S03Var05_holtdmpd), na.rm=TRUE)))
 
 ```
 
@@ -264,18 +264,18 @@ So we will proceed with using the SES method and apply it to the whole data set 
 ```{r}
 
 # Random walk forecasts without drift
-Y_rwf <- rwf(Y.ts, h = 140)
-#Y_drwf <- rwf(Y.ts, h = 140, drift = TRUE)
-#Y_mean <- meanf(Y.ts, h = 140)
+S03Var05_rwf <- rwf(S03Var05.ts, h = 140)
+#S03Var05_drwf <- rwf(S03Var05.ts, h = 140, drift = TRUE)
+#S03Var05_mean <- meanf(S03Var05.ts, h = 140)
 
 # Exponential Smoothing Forecast
-Y_ses <- ses(Y.ts, h = 140)
+S03Var05_ses <- ses(S03Var05.ts, h = 140)
 
-autoplot(Y.ts) +
-  autolayer(Y_rwf, series = "Naive", PI = FALSE) +
-  #autolayer(Y_drwf, series = "Drift", PI = FALSE) +
-  #autolayer(Y_mean, series = "Mean", PI = FALSE) +
-  autolayer(Y_ses, series = "Ses", PI = FALSE)
+autoplot(S03Var05.ts) +
+  autolayer(S03Var05_rwf, series = "Naive", PI = FALSE) +
+  #autolayer(S03Var05_drwf, series = "Drift", PI = FALSE) +
+  #autolayer(S03Var05_mean, series = "Mean", PI = FALSE) +
+  autolayer(S03Var05_ses, series = "Ses", PI = FALSE)
 
 ```
 
@@ -286,8 +286,8 @@ Both simple exponential smoothing and naive random walk methods provide identica
 
 ```{r}
 
-Y_ses <- ses(Y.ts, h = 140)
-Y_ses[["model"]]
+S03Var05_ses <- ses(S03Var05.ts, h = 140)
+S03Var05_ses[["model"]]
 
 ```
 
@@ -298,7 +298,7 @@ The value of alpha of $\alpha = 0.8471$ is very close to one, showing that the l
 
 # Estimate parameters
 
-summary(Y_ses)
+summary(S03Var05_ses)
 
 ```
 
@@ -309,9 +309,9 @@ summary(Y_ses)
 
 ```{r}
 
-Z1 <- tsCV(Z.ts, ses, h=140)
-Z2 <- tsCV(Z.ts, holt, h=140)
-Z3 <- tsCV(Z.ts, holt, damped=TRUE, h=140)
+S03Var07_ses <- tsCV(S03Var07.ts, ses, h=140)
+S03Var07_holt <- tsCV(S03Var07.ts, holt, h=140)
+S03Var07_holtdmpd <- tsCV(S03Var07.ts, holt, damped=TRUE, h=140)
 
 
 print("S03Var07")
@@ -319,21 +319,21 @@ print("MSE")
 
 # Compare MSE:
 
-print(c("ses:", mean(Z1^2, na.rm=TRUE)))
+print(c("ses:", mean(S03Var07_ses^2, na.rm=TRUE)))
 
-print(c("Holt:", mean(Z2^2, na.rm=TRUE)))
+print(c("Holt:", mean(S03Var07_holt^2, na.rm=TRUE)))
 
-print(c("Holt damped:", mean(Z3^2, na.rm=TRUE)))
+print(c("Holt damped:", mean(S03Var07_holtdmpd^2, na.rm=TRUE)))
 
 
 print("MAE")
 # Compare MAE:
 
-print(c("ses:", mean(abs(Z1), na.rm=TRUE)))
+print(c("ses:", mean(abs(S03Var07_ses), na.rm=TRUE)))
 
-print(c("Holt:", mean(abs(Z2), na.rm=TRUE)))
+print(c("Holt:", mean(abs(S03Var07_holt), na.rm=TRUE)))
 
-print(c("Holt damped:", mean(abs(Z3), na.rm=TRUE)))
+print(c("Holt damped:", mean(abs(S03Var07_holtdmpd), na.rm=TRUE)))
 
 
 ```
@@ -347,18 +347,18 @@ So we will proceed with using the SES method and apply it to the whole data set 
 ```{r}
 
 # Random walk forecasts without drift
-Z_rwf <- rwf(Z.ts, h = 140)
-#Z_drwf <- rwf(Z.ts, h = 140, drift = TRUE)
-#Z_mean <- meanf(Z.ts, h = 140)
+S03Var07_rwf <- rwf(S03Var07.ts, h = 140)
+#S03Var07_drwf <- rwf(S03Var07.ts, h = 140, drift = TRUE)
+#S03Var07_mean <- meanf(S03Var07.ts, h = 140)
 
 # Exponential Smoothing Forecast
-Z_ses <- ses(Y.ts, h = 140)
+S03Var07_ses <- ses(S03Var07.ts, h = 140)
 
-autoplot(Z.ts) +
-  autolayer(Z_rwf, series = "Naive", PI = FALSE) +
-  #autolayer(Z_drwf, series = "Drift", PI = FALSE) +
-  #autolayer(Z_mean, series = "Mean", PI = FALSE) +
-  autolayer(Z_ses, series = "Ses", PI = FALSE)
+autoplot(S03Var07.ts) +
+  autolayer(S03Var07_rwf, series = "Naive", PI = FALSE) +
+  #autolayer(S03Var07_drwf, series = "Drift", PI = FALSE) +
+  #autolayer(S03Var07_mean, series = "Mean", PI = FALSE) +
+  autolayer(S03Var07_ses, series = "Ses", PI = FALSE)
 
 ```
 
@@ -369,8 +369,8 @@ Both simple exponential smoothing and naive random walk methods provide identica
 
 ```{r}
 
-Z_ses <- ses(Z.ts, h = 140)
-Z_ses[["model"]]
+S03Var07_ses <- ses(S03Var07.ts, h = 140)
+S03Var07_ses[["model"]]
 
 ```
 
@@ -382,6 +382,6 @@ The value of alpha of $\alpha = 0.9999$ is very close to one, showing that the l
 # Estimate parameters
 
 
-summary(Z_ses)
+summary(S03Var07_ses)
 
 ```
