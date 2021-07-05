@@ -218,6 +218,30 @@ print(btImp9.pt)
 
 For boosted trees, there are two methods for assessing variable importance: `relative.influence`, which is a traditional procedure, and an experimental procedure called `permutation.test.gbm`. As additional variables highly correlated with V1 are added to the model, the relative importance of V1 declines more steeply under the `permutation.test.gbm` method than under the `relative.influence` method. The importance of V1 declines a total of 51% under the relative importance measure when two additional variables are added. Under the permutation test, the total decline in importance for V1 is 60%.
 
+#### Code
+
+```{r}
+#Cubist Model
+library(Cubist)
+
+model10 <- cubist(x = simulated[-11], y = simulated$y, committees = 100)
+model11 <- cubist(x = simulated2[-11], y = simulated2$y, committees = 100)
+model12 <- cubist(x = simulated3[-11], y = simulated3$y, committees = 100)
+```
+
+```{r}
+#Note: output is truncated to emphasize measures of variable importance.
+summary(model10)
+summary(model11)
+summary(model12)
+```
+
+#### Response
+
+While "There is no established technique for measuring predictor importance for Cubist models" (KJ 212), we can observe the frequency with which a variable appeared in a rule criterion ("conds"). This gives some indication of the importance of a variable during the Cubist modeling process.  
+
+In the first model, which does not include additional variables correlated with `V1`, `V1` appeared in rule criteria 47% of the time. As `duplicate1` and then `duplicate2` were added to the model, `V1` appeared in rule criteria 38% and 43% of the time, respectively. This indicates some decline in variable importance for `V1` as highly correlated variables are added to the model. In terms of its appearance in final models, `V1` underwent a more significant decline: from 96% with no correlated duplicate variables, to 67%, and then to 58%.
+
 ## Exercise 8.2
 
 #### Question
