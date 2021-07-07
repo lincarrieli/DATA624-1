@@ -1,0 +1,145 @@
+---
+title: "KNN"
+author: "David Moste"
+date: "7/7/2021"
+output: word_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Let's start by bringing in the data and getting a sense of what's there.
+
+```{r}
+data <- read.csv("https://raw.githubusercontent.com/dmoste/DATA624/main/Project2/StudentDataTOMODEL.csv")
+
+summary(data)
+
+cc <- complete.cases(data)
+length(cc[cc == FALSE])/length(cc)
+
+missing_data <- sapply(data, function(x) sum(is.na(x)))
+missing_data <- data.frame(missing_data)
+
+unique(data[,1])
+length(data[data[,1] == "",])
+```
+
+Clearly there is some missing data, so that needs to be dealt with first. I think there is enough full data that I can just fill in missing values with the mean for each predictor. To do this, I first have to map the Brand.Code predictor into numerical values.
+
+```{r}
+library(plyr)
+data[,1] <- mapvalues(data[,1], from = c("A","B","C","D",""), to = c(1,2,3,4,NA))
+data[,1] <- as.integer(data[,1])
+
+# Removing the response variable since I don't want to impute these values
+drops <- c("PH")
+features <- data[ ,!(names(data) %in% drops)]
+
+na_to_mean <- function(x) replace(x, is.na(x), mean(x, na.rm = TRUE))
+features[] <- lapply(features, na_to_mean)
+```
+
+Check to ensure that the data has been completed.
+
+```{r}
+cc <- complete.cases(features)
+length(cc[cc == FALSE])/length(cc)
+
+missing_data <- sapply(features, function(x) sum(is.na(x)))
+missing_data <- data.frame(missing_data)
+```
+
+
+Now I'm going to work on getting some sort of visualization of the data.
+
+```{r}
+library(ggplot2)
+library(tidyverse)
+
+vis_features <- features %>%
+  gather(key = "variable", value = "value")
+
+ggplot(data = vis_features, aes(x = value)) +
+  geom_bar() +
+  facet_wrap(variable ~ ., scales = "free")
+```
+
+KNN is HIGHLY sensitive to the scale of predictors, so I'm going to go ahead and center and scale the predictors before building a model.
+
+```{r}
+library(caret)
+
+trans <- preProcess(features,
+                    method = c("BoxCox", "center", "scale", "pca"))
+trans
+transformed_feat <- predict(trans, features)
+```
+
+Next I'm going to check the variance of each predictor variable and remove anything with near zero variance.
+
+```{r}
+library(caret)
+
+nzv <- nearZeroVar(features[,2:32], saveMetrics = TRUE)
+nzv[nzv[,"nzv"] == TRUE,]
+
+drops <- c("Hyd.Pressure1")
+features <- features[ ,!(names(features) %in% drops)]
+```
+
+Let's add the pH data back into these features and remove any rows that contain NAs (this data isn't usable since we have no idea what the response variable is).
+
+```{r}
+processed <- cbind(data[,26], features)
+names(processed)[1] <- ("PH")
+
+missing_data <- sapply(processed, function(x) sum(is.na(x)))
+missing_data <- data.frame(missing_data)
+
+processed <- processed[complete.cases(processed),]
+
+missing_data <- sapply(processed, function(x) sum(is.na(x)))
+missing_data <- data.frame(missing_data)
+```
+
+At this point, I have my features worked the way I want (I think), so I'm going to split the data into a train and test set.
+
+```{r}
+set.seed(12345)
+train_ind <- sample(seq_len(nrow(processed)),
+                    size = floor(0.75*nrow(processed)))
+
+train <- processed[train_ind,]
+test <- processed[-train_ind,]
+```
+
+Let's go ahead and build a model with the training data!
+
+```{r}
+knnTune <- train(train[,-1],
+                 train[,1],
+                 method = "knn",
+                 tuneGrid = data.frame(.k = 1:20),
+                 trControl = trainControl(method = "cv"))
+knnTune
+```
+
+We can check how we did on the test set now.
+
+```{r}
+knnPred <- predict(knnTune, newdata = test[,-1])
+postResample(pred = knnPred, obs = test[,1])
+```
+
+Finally, lets bring in the data we need to predict and go for it!
+
+```{r}
+predict <- read.csv("https://raw.githubusercontent.com/dmoste/DATA624/main/Project2/StudentEvaluationTOPREDICT.csv")
+```
+
+
+
+
+
