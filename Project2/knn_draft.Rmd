@@ -218,6 +218,19 @@ kknn_rmse <- kknn_low(train[,-1], train[,1], test[,-1], test[,1])
 ggplot(data = kknn_rmse, aes(x = distance, y = RMSE, color = Type)) +
   geom_line() +
   geom_point()
+
+kknn_fit <- kknn(train[,1] ~ .,
+                 train[,-1],
+                 test[,-1],
+                 distance = 1,
+                 kernel = "triangular")
+
+kknn_test <- data.frame(cbind(kknn_fit$fitted.values,test[,1]))
+colnames(kknn_test) <- c("kknn","actual")
+
+ggplot(kknn_test, aes(x = actual, y = kknn)) +
+  geom_line() +
+  geom_point()
 ```
 
 This model found a minimum RMSE of 0.1185263 for a triangular kernel at a distance of 1 (Manhattan distance). This is definitely the best RMSE I've acheived so far, so I think I'm gonna stick with this model.
