@@ -118,14 +118,18 @@ test <- processed[-train_ind,]
 Let's go ahead and build a model with the training data!
 
 ```{r}
-knnTune <- train(train[,-1],
+#### knn with caret ####
+
+library(caret)
+
+knnModel <- train(train[,-1],
                  train[,1],
                  method = "knn",
                  tuneGrid = data.frame(.k = 1:20),
                  trControl = trainControl(method = "cv"))
-knnTune
+knnModel
 
-ggplot(data = knnTune$results, aes(x = k, y = RMSE)) +
+ggplot(data = knnModel$results, aes(x = k, y = RMSE)) +
   geom_line() +
   geom_point()
 ```
@@ -133,9 +137,91 @@ ggplot(data = knnTune$results, aes(x = k, y = RMSE)) +
 We can check how we did on the test set now.
 
 ```{r}
-knnPred <- predict(knnTune, newdata = test[,-1])
+knnPred <- predict(knnModel, newdata = test[,-1])
 postResample(pred = knnPred, obs = test[,1])
 ```
+
+The caret package knn regression function found a minimum RMSE of 0.1432314 with a k value of 4.
+
+Let's see if I can do better with a different package and more control. Trying to model again with the knn.reg function from the FNN package. This package seems interesting because it allows you to change the distance algorithm.
+
+```{r}
+#### knn.reg from FNN ####
+
+library(FNN)
+
+fnn_low_knn <- function(train_x, train_y){
+  rmse_df <- data.frame(matrix(nrow = 0, ncol = 3))
+  
+  for(x in c("kd_tree","cover_tree","brute")){
+    for(i in 1:20){
+      knn_fnn <- knn.reg(train = train_x,
+                         # test = test[,-1],
+                         y = train_y,
+                         k = i,
+                         algorithm = x)
+      
+      rmse <- (mean(knn_fnn$residuals^2))^(1/2)
+      rmse_df <- rbind(rmse_df,c(i,rmse,x))
+    }
+  }
+  colnames(rmse_df) <- c("k", "RMSE","Type")
+  rmse_df[,1] <- as.integer(rmse_df[,1])
+  rmse_df[,2] <- as.numeric(rmse_df[,2])
+  return(rmse_df)
+}
+
+fnn_knn_rmse <- fnn_low_knn(train[,-1], train[,1])
+
+ggplot(data = fnn_knn_rmse, aes(x = k, y = RMSE, color = Type)) +
+  geom_line() +
+  geom_point()
+```
+
+The FNN knn regression gave a minimum RMSE of 0.1326044 with a k of 4. Unfortunately, it seems there are no differences in any of the methods...
+
+I figured I'd try one more package. This time I'm using the kknn package which allows for weighting the nearest neighbors.
+
+```{r}
+#### kknn from kknn ####
+
+library(kknn)
+
+kknn_low <- function(train_x, train_y, test_x, test_y){
+  rmse_df <- data.frame(matrix(nrow = 0, ncol = 3))
+  
+  types <- c("rectangular","triangular",
+             "biweight","triweight",
+             "epanechnikov","gaussian",
+             "cos","inv","rank",
+             "optimal")
+  
+  for(x in types){
+    for(i in 1:4){
+      ph_kknn <- kknn(train_y ~ .,
+                      train_x,
+                      test_x,
+                      distance = i,
+                      kernel = x)
+      
+      rmse <- (mean((test_y - ph_kknn$fitted.values)^2))^(1/2)
+      rmse_df <- rbind(rmse_df,c(i,rmse,x))
+    }
+  }
+  colnames(rmse_df) <- c("distance", "RMSE","Type")
+  rmse_df[,1] <- as.integer(rmse_df[,1])
+  rmse_df[,2] <- as.numeric(rmse_df[,2])
+  return(rmse_df)
+}
+
+kknn_rmse <- kknn_low(train[,-1], train[,1], test[,-1], test[,1])
+
+ggplot(data = kknn_rmse, aes(x = distance, y = RMSE, color = Type)) +
+  geom_line() +
+  geom_point()
+```
+
+This model found a minimum RMSE of 0.1190872 for a triangular kernel at a distance of 1 (Manhattan distance). This is much better than any of the other models so far, so I'm thinking this is the package to go with.
 
 Finally, lets bring in the data we need to predict and go for it!
 
