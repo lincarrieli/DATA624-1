@@ -30,7 +30,9 @@ Clearly there is some missing data, so that needs to be dealt with first. I thin
 
 ```{r}
 library(plyr)
-data[,1] <- mapvalues(data[,1], from = c("A","B","C","D",""), to = c(1,2,3,4,NA))
+data[,1] <- mapvalues(data[,1],
+                      from = c("A","B","C","D",""),
+                      to = c(1,2,3,4,NA))
 data[,1] <- as.integer(data[,1])
 
 # Removing the response variable since I don't want to impute these values
@@ -72,7 +74,7 @@ KNN is HIGHLY sensitive to the scale of predictors, so I'm going to go ahead and
 library(caret)
 
 trans <- preProcess(features,
-                    method = c("BoxCox", "center", "scale", "pca"))
+                    method = c("BoxCox", "center", "scale"))
 trans
 transformed_feat <- predict(trans, features)
 ```
@@ -82,17 +84,17 @@ Next I'm going to check the variance of each predictor variable and remove anyth
 ```{r}
 library(caret)
 
-nzv <- nearZeroVar(features[,2:32], saveMetrics = TRUE)
+nzv <- nearZeroVar(transformed_feat, saveMetrics = TRUE)
 nzv[nzv[,"nzv"] == TRUE,]
 
 drops <- c("Hyd.Pressure1")
-features <- features[ ,!(names(features) %in% drops)]
+transformed_feat <- transformed_feat[ ,!(names(transformed_feat) %in% drops)]
 ```
 
 Let's add the pH data back into these features and remove any rows that contain NAs (this data isn't usable since we have no idea what the response variable is).
 
 ```{r}
-processed <- cbind(data[,26], features)
+processed <- cbind(data[,26], transformed_feat)
 names(processed)[1] <- ("PH")
 
 missing_data <- sapply(processed, function(x) sum(is.na(x)))
@@ -141,7 +143,7 @@ knnPred <- predict(knnModel, newdata = test[,-1])
 postResample(pred = knnPred, obs = test[,1])
 ```
 
-The caret package knn regression function found a minimum RMSE of 0.1432314 with a k value of 4.
+The caret package knn regression function found a minimum RMSE of 0.1361693 with a k value of 6.
 
 Let's see if I can do better with a different package and more control. Trying to model again with the knn.reg function from the FNN package. This package seems interesting because it allows you to change the distance algorithm.
 
@@ -178,7 +180,7 @@ ggplot(data = fnn_knn_rmse, aes(x = k, y = RMSE, color = Type)) +
   geom_point()
 ```
 
-The FNN knn regression gave a minimum RMSE of 0.1326044 with a k of 4. Unfortunately, it seems there are no differences in any of the methods...
+The FNN knn regression gave a minimum RMSE of 0.1240583 with a k value of 6. Unfortunately, it seems there are no differences in any of the methods...
 
 I figured I'd try one more package. This time I'm using the kknn package which allows for weighting the nearest neighbors.
 
@@ -221,12 +223,41 @@ ggplot(data = kknn_rmse, aes(x = distance, y = RMSE, color = Type)) +
   geom_point()
 ```
 
-This model found a minimum RMSE of 0.1190872 for a triangular kernel at a distance of 1 (Manhattan distance). This is much better than any of the other models so far, so I'm thinking this is the package to go with.
+This model found a minimum RMSE of 0.1185263 for a triangular kernel at a distance of 1 (Manhattan distance). This is definitely the best RMSE I've acheived so far, so I think I'm gonna stick with this model.
 
-Finally, lets bring in the data we need to predict and go for it!
+Finally, lets bring in the data we need to predict and go for it! I'll apply all the same methods to the prediction data and see what happens :)
 
 ```{r}
 predict <- read.csv("https://raw.githubusercontent.com/dmoste/DATA624/main/Project2/StudentEvaluationTOPREDICT.csv")
+
+
+missing_data <- sapply(predict_df, function(x) sum(is.na(x)))
+missing_data <- data.frame(missing_data)
+
+drops <- c("PH", "Hyd.Pressure1")
+predict_features <- predict_df[ ,!(names(predict_df) %in% drops)]
+
+predict_features[,1] <- mapvalues(predict_features[,1], from = c("A","B","C","D",""), to = c(1,2,3,4,NA))
+predict_features[,1] <- as.integer(predict_features[,1])
+
+na_to_mean <- function(x) replace(x, is.na(x), mean(x, na.rm = TRUE))
+predict_features[] <- lapply(predict_features, na_to_mean)
+
+trans <- preProcess(predict_features,
+                    method = c("BoxCox", "center", "scale"))
+trans
+transformed_feat <- predict(trans, predict_features)
+
+predict_df <- cbind(predict_df[,26], transformed_feat)
+names(predict_df)[1] <- ("PH")
+
+kknn_fit <- kknn(train[,1] ~ .,
+                train[,-1],
+                predict_df[,-1],
+                distance = 1,
+                kernel = "triangular")
+
+kknn_fit$fitted.values
 ```
 
 
