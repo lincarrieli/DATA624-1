@@ -144,7 +144,7 @@ colnames(caret_test) <- c("caret","actual")
 caret_test <- caret_test %>%
   mutate(pe = abs(actual - caret)/actual)
 
-MAPE <- mean(sum(caret_test$pe))
+MAPE <- (mean(caret_test$pe))*100
 MAPE
 
 ggplot(caret_test, aes(x = actual, y = caret)) +
@@ -152,7 +152,7 @@ ggplot(caret_test, aes(x = actual, y = caret)) +
   geom_point()
 ```
 
-The caret package knn regression function found a minimum MAE (not MAPE) of 0.09215998 with a k value of 6. When I fit the model to the test data, I got a MAPE of 7.58%.
+The caret package knn regression function found a minimum MAPE of 1.18% with a k value of 6.
 
 Let's see if I can do better with a different package and more control. Trying to model again with the knn.reg function from the FNN package. This package seems interesting because it allows you to change the distance algorithm.
 
@@ -171,7 +171,7 @@ fnn_func <- function(train_x, train_y, test_x, test_y){
                          k = i,
                          algorithm = x)
       
-      mape <- mean(abs(test_y - knn_fnn$pred))
+      mape <- mean(abs(test_y - knn_fnn$pred)/test_y)
       mape_df <- rbind(mape_df,c(i,mape,x))
     }
   }
@@ -196,18 +196,13 @@ fnn_fit <- knn.reg(train = train[,-1],
 
 fnn_test <- data.frame(cbind(fnn_fit$pred,test[,1]))
 colnames(fnn_test) <- c("fnn","actual")
-fnn_test <- fnn_test %>%
-  mutate(pe = abs(actual - fnn)/actual)
 
-MAPE <- mean(sum(fnn_test$pe))
-MAPE
-
-ggplot(kknn_test, aes(x = actual, y = kknn)) +
+ggplot(fnn_test, aes(x = actual, y = fnn)) +
   geom_line() +
   geom_point()
 ```
 
-The FNN knn regression gave a minimum MAPE of 0.1003531 with a k value of 6. Running the model on the test data, I got a MAPE of 7.58% - the same as the caret package. Unfortunately, it seems there are no differences in any of the methods...
+The FNN knn regression gave a minimum MAPE of 1.18% with a k value of 6.This is the same as the caret package model. Unfortunately, it seems there are no differences in any of the promised methods within this package...
 
 I figured I'd try one more package. This time I'm using the kknn package which allows for weighting the nearest neighbors.
 
@@ -233,7 +228,7 @@ kknn_func <- function(train_x, train_y, test_x, test_y){
                       distance = i,
                       kernel = x)
       
-      mape <- mean(abs(test_y - ph_kknn$fitted.values))
+      mape <- mean(abs(test_y - ph_kknn$fitted.values)/test_y)
       mape_df <- rbind(mape_df,c(i,mape,x))
     }
   }
@@ -249,6 +244,7 @@ ggplot(data = kknn_mape, aes(x = Distance, y = MAPE, color = Type)) +
   geom_line() +
   geom_point()
 
+# Check best model
 kknn_fit <- kknn(train[,1] ~ .,
                  train[,-1],
                  test[,-1],
@@ -257,18 +253,13 @@ kknn_fit <- kknn(train[,1] ~ .,
 
 kknn_test <- data.frame(cbind(kknn_fit$fitted.values,test[,1]))
 colnames(kknn_test) <- c("kknn","actual")
-kknn_test <- kknn_test %>%
-  mutate(pe = abs(actual - kknn)/actual)
-
-MAPE <- mean(sum(kknn_test$pe))
-MAPE
 
 ggplot(kknn_test, aes(x = actual, y = kknn)) +
   geom_line() +
   geom_point()
 ```
 
-This model found a minimum MAPE of 0.08286259 for a biweight kernel at a distance of 1 (Manhattan distance). When I ran the model on the test data, I got a MAPE of 6.25%. This is definitely the best MAPE I've achieved so far, so I think I'm gonna stick with this model.
+This model found a minimum MAPE of 0.974% for a biweight kernel at a distance of 1 (Manhattan distance). This is definitely the best MAPE I've achieved so far, so I think I'm gonna stick with this model.
 
 Finally, lets bring in the data we need to predict and go for it! I'll apply all the same methods to the prediction data and see what happens :)
 
