@@ -117,67 +117,97 @@ test <- processed[-train_ind,]
 Let's go ahead and build a model with the training data!
 
 ```{r}
-#### knn with caret ####
-
-library(caret)
-
+#### train from caret ####
 knnModel <- train(train[,-1],
                  train[,1],
                  method = "knn",
                  tuneGrid = data.frame(.k = 1:20),
                  trControl = trainControl(method = "cv"))
+
 knnModel
 
 ggplot(data = knnModel$results, aes(x = k, y = RMSE)) +
   geom_line() +
   geom_point()
-```
 
-We can check how we did on the test set now.
+ggplot(data = knnModel$results, aes(k)) + 
+  geom_line(aes(y = RMSE, color = "RMSE")) + 
+  geom_point(aes(y = RMSE)) +
+  geom_line(aes(y = MAE, color = "MAE")) +
+  geom_point(aes(y = MAE))
 
-```{r}
+# Check best model
 knnPred <- predict(knnModel, newdata = test[,-1])
-postResample(pred = knnPred, obs = test[,1])
+
+caret_test <- data.frame(cbind(knnPred,test[,1]))
+colnames(caret_test) <- c("caret","actual")
+caret_test <- caret_test %>%
+  mutate(pe = abs(actual - caret)/actual)
+
+MAPE <- mean(sum(caret_test$pe))
+MAPE
+
+ggplot(caret_test, aes(x = actual, y = caret)) +
+  geom_line() +
+  geom_point()
 ```
 
-The caret package knn regression function found a minimum RMSE of 0.1361693 with a k value of 6.
+The caret package knn regression function found a minimum MAE (not MAPE) of 0.09215998 with a k value of 6. When I fit the model to the test data, I got a MAPE of 7.58%.
 
 Let's see if I can do better with a different package and more control. Trying to model again with the knn.reg function from the FNN package. This package seems interesting because it allows you to change the distance algorithm.
 
 ```{r}
 #### knn.reg from FNN ####
-
 library(FNN)
 
-fnn_low_knn <- function(train_x, train_y){
-  rmse_df <- data.frame(matrix(nrow = 0, ncol = 3))
+fnn_func <- function(train_x, train_y, test_x, test_y){
+  mape_df <- data.frame(matrix(nrow = 0, ncol = 3))
   
   for(x in c("kd_tree","cover_tree","brute")){
     for(i in 1:20){
       knn_fnn <- knn.reg(train = train_x,
-                         # test = test[,-1],
+                         test = test_x,
                          y = train_y,
                          k = i,
                          algorithm = x)
       
-      rmse <- (mean(knn_fnn$residuals^2))^(1/2)
-      rmse_df <- rbind(rmse_df,c(i,rmse,x))
+      mape <- mean(abs(test_y - knn_fnn$pred))
+      mape_df <- rbind(mape_df,c(i,mape,x))
     }
   }
-  colnames(rmse_df) <- c("k", "RMSE","Type")
-  rmse_df[,1] <- as.integer(rmse_df[,1])
-  rmse_df[,2] <- as.numeric(rmse_df[,2])
-  return(rmse_df)
+  colnames(mape_df) <- c("k", "MAPE","Type")
+  mape_df[,1] <- as.integer(mape_df[,1])
+  mape_df[,2] <- as.numeric(mape_df[,2])
+  return(mape_df)
 }
 
-fnn_knn_rmse <- fnn_low_knn(train[,-1], train[,1])
+fnn_mape <- fnn_func(train[,-1], train[,1], test[,-1], test[,1])
 
-ggplot(data = fnn_knn_rmse, aes(x = k, y = RMSE, color = Type)) +
+ggplot(data = fnn_mape, aes(x = k, y = MAPE, color = Type)) +
+  geom_line() +
+  geom_point()
+
+# Check best model
+fnn_fit <- knn.reg(train = train[,-1],
+                   test = test[,-1],
+                   y = train[,1],
+                   k = 6,
+                   algorithm = "kd_tree")
+
+fnn_test <- data.frame(cbind(fnn_fit$pred,test[,1]))
+colnames(fnn_test) <- c("fnn","actual")
+fnn_test <- fnn_test %>%
+  mutate(pe = abs(actual - fnn)/actual)
+
+MAPE <- mean(sum(fnn_test$pe))
+MAPE
+
+ggplot(kknn_test, aes(x = actual, y = kknn)) +
   geom_line() +
   geom_point()
 ```
 
-The FNN knn regression gave a minimum RMSE of 0.1240583 with a k value of 6. Unfortunately, it seems there are no differences in any of the methods...
+The FNN knn regression gave a minimum MAPE of 0.1003531 with a k value of 6. Running the model on the test data, I got a MAPE of 7.58% - the same as the caret package. Unfortunately, it seems there are no differences in any of the methods...
 
 I figured I'd try one more package. This time I'm using the kknn package which allows for weighting the nearest neighbors.
 
@@ -186,8 +216,8 @@ I figured I'd try one more package. This time I'm using the kknn package which a
 
 library(kknn)
 
-kknn_low <- function(train_x, train_y, test_x, test_y){
-  rmse_df <- data.frame(matrix(nrow = 0, ncol = 3))
+kknn_func <- function(train_x, train_y, test_x, test_y){
+  mape_df <- data.frame(matrix(nrow = 0, ncol = 3))
   
   types <- c("rectangular","triangular",
              "biweight","triweight",
@@ -203,19 +233,19 @@ kknn_low <- function(train_x, train_y, test_x, test_y){
                       distance = i,
                       kernel = x)
       
-      rmse <- (mean((test_y - ph_kknn$fitted.values)^2))^(1/2)
-      rmse_df <- rbind(rmse_df,c(i,rmse,x))
+      mape <- mean(abs(test_y - ph_kknn$fitted.values))
+      mape_df <- rbind(mape_df,c(i,mape,x))
     }
   }
-  colnames(rmse_df) <- c("distance", "RMSE","Type")
-  rmse_df[,1] <- as.integer(rmse_df[,1])
-  rmse_df[,2] <- as.numeric(rmse_df[,2])
-  return(rmse_df)
+  colnames(mape_df) <- c("Distance", "MAPE","Type")
+  mape_df[,1] <- as.integer(mape_df[,1])
+  mape_df[,2] <- as.numeric(mape_df[,2])
+  return(mape_df)
 }
 
-kknn_rmse <- kknn_low(train[,-1], train[,1], test[,-1], test[,1])
+kknn_mape <- kknn_func(train[,-1], train[,1], test[,-1], test[,1])
 
-ggplot(data = kknn_rmse, aes(x = distance, y = RMSE, color = Type)) +
+ggplot(data = kknn_mape, aes(x = Distance, y = MAPE, color = Type)) +
   geom_line() +
   geom_point()
 
@@ -223,17 +253,22 @@ kknn_fit <- kknn(train[,1] ~ .,
                  train[,-1],
                  test[,-1],
                  distance = 1,
-                 kernel = "triangular")
+                 kernel = "biweight")
 
 kknn_test <- data.frame(cbind(kknn_fit$fitted.values,test[,1]))
 colnames(kknn_test) <- c("kknn","actual")
+kknn_test <- kknn_test %>%
+  mutate(pe = abs(actual - kknn)/actual)
+
+MAPE <- mean(sum(kknn_test$pe))
+MAPE
 
 ggplot(kknn_test, aes(x = actual, y = kknn)) +
   geom_line() +
   geom_point()
 ```
 
-This model found a minimum RMSE of 0.1185263 for a triangular kernel at a distance of 1 (Manhattan distance). This is definitely the best RMSE I've acheived so far, so I think I'm gonna stick with this model.
+This model found a minimum MAPE of 0.08286259 for a biweight kernel at a distance of 1 (Manhattan distance). When I ran the model on the test data, I got a MAPE of 6.25%. This is definitely the best MAPE I've achieved so far, so I think I'm gonna stick with this model.
 
 Finally, lets bring in the data we need to predict and go for it! I'll apply all the same methods to the prediction data and see what happens :)
 
