@@ -21,12 +21,13 @@ length(cc[cc == FALSE])/length(cc)
 
 missing_data <- sapply(data, function(x) sum(is.na(x)))
 missing_data <- data.frame(missing_data)
+(sum(missing_data)/(2571*33))*100
 
 unique(data[,1])
 length(data[data[,1] == "",])
 ```
 
-Clearly there is some missing data, so that needs to be dealt with first. I think there is enough full data that I can just fill in missing values with the mean for each predictor. To do this, I first have to map the Brand.Code predictor into numerical values.
+Clearly there is some missing data, so that needs to be dealt with first. Since only 0.8% of the data is missing, I think there is enough full data that I can just fill in missing values with the mean for each predictor. To do this, I first have to map the Brand.Code predictor into numerical values.
 
 ```{r}
 library(plyr)
@@ -52,7 +53,6 @@ length(cc[cc == FALSE])/length(cc)
 missing_data <- sapply(features, function(x) sum(is.na(x)))
 missing_data <- data.frame(missing_data)
 ```
-
 
 Now I'm going to work on getting some sort of visualization of the data.
 
@@ -101,9 +101,6 @@ missing_data <- sapply(processed, function(x) sum(is.na(x)))
 missing_data <- data.frame(missing_data)
 
 processed <- processed[complete.cases(processed),]
-
-missing_data <- sapply(processed, function(x) sum(is.na(x)))
-missing_data <- data.frame(missing_data)
 ```
 
 At this point, I have my features worked the way I want (I think), so I'm going to split the data into a train and test set.
