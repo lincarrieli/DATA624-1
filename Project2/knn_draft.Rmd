@@ -124,6 +124,10 @@ knnTune <- train(train[,-1],
                  tuneGrid = data.frame(.k = 1:20),
                  trControl = trainControl(method = "cv"))
 knnTune
+
+ggplot(data = knnTune$results, aes(x = k, y = RMSE)) +
+  geom_line() +
+  geom_point()
 ```
 
 We can check how we did on the test set now.
