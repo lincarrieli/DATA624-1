@@ -264,6 +264,10 @@ This model found a minimum MAPE of 0.974% for a biweight kernel at a distance of
 Finally, lets bring in the data we need to predict and go for it! I'll apply all the same methods to the prediction data and see what happens :)
 
 ```{r}
+library(plyr)
+library(caret)
+library(kknn)
+
 predict <- read.csv("https://raw.githubusercontent.com/dmoste/DATA624/main/Project2/StudentEvaluationTOPREDICT.csv")
 
 
@@ -271,9 +275,11 @@ missing_data <- sapply(predict_df, function(x) sum(is.na(x)))
 missing_data <- data.frame(missing_data)
 
 drops <- c("PH", "Hyd.Pressure1")
-predict_features <- predict_df[ ,!(names(predict_df) %in% drops)]
+predict_features <- predict_df[,!(names(predict_df) %in% drops)]
 
-predict_features[,1] <- mapvalues(predict_features[,1], from = c("A","B","C","D",""), to = c(1,2,3,4,NA))
+predict_features[,1] <- mapvalues(predict_features[,1],
+                                  from = c("A","B","C","D",""),
+                                  to = c(1,2,3,4,NA))
 predict_features[,1] <- as.integer(predict_features[,1])
 
 na_to_mean <- function(x) replace(x, is.na(x), mean(x, na.rm = TRUE))
@@ -294,6 +300,7 @@ kknn_fit <- kknn(train[,1] ~ .,
                 kernel = "triangular")
 
 kknn_fit$fitted.values
+predictions <- data.frame(kknn_fit$fitted.values)
 ```
 
 
