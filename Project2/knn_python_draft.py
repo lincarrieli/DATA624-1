@@ -18,8 +18,8 @@ y = target_df.to_numpy().flatten()
 X_train, X_test, y_train, y_test = tts(X, y, test_size = 0.25, random_state = 21)
 
 # Setup containers to store MAPE values
-neighbors = np.arange(1, 30)
-columns = ["uniform", "distance", "custom"]
+neighbors = np.arange(1, 20)
+columns = ["uniform", "inverse", "inverse squared"]
 mape_scores = pd.DataFrame(index = neighbors, columns = columns)
 
 # Define a function for inverse squared weights
@@ -36,6 +36,7 @@ for w in ["uniform", "distance", inverse_squared_weights]:
         # Setup a k-NN Classifier with k neighbors
         knn = KNN.KNeighborsRegressor(n_neighbors = k,
                                       weights = w,
+                                      metric = "manhattan",
                                       algorithm = "brute")
     
         # Fit the classifier to the training data
@@ -52,11 +53,12 @@ for w in ["uniform", "distance", inverse_squared_weights]:
     col += 1
 
 # Generate plot
-plt.title('k-NN: Varying Number of Neighbors, Weights, and Algorithm')
+plt.title('k-NN: Varying Number of Neighbors and Weights')
 plt.plot(neighbors, mape_scores.iloc[:,0], label = "Uniform Weights")
 plt.plot(neighbors, mape_scores.iloc[:,1], label = "Distance (Inverse) Weights")
 plt.plot(neighbors, mape_scores.iloc[:,2], label = "Inverse Squared Weights")
 plt.legend()
 plt.xlabel('Number of Neighbors')
 plt.ylabel('MAPE')
+plt.xticks(range(1,21,2))
 plt.show()
