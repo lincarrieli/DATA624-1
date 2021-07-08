@@ -295,7 +295,7 @@ kknn_fit <- kknn(train[,1] ~ .,
                 train[,-1],
                 predict_df[,-1],
                 distance = 1,
-                kernel = "triangular")
+                kernel = "biweight")
 
 kknn_fit$fitted.values
 predictions <- data.frame(kknn_fit$fitted.values)
