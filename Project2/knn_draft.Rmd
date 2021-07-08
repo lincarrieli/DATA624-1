@@ -11,6 +11,8 @@ output:
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
+# Pre-Process
+
 Let's start by bringing in the data and getting a sense of what's there.
 
 ```{r}
@@ -77,7 +79,6 @@ library(caret)
 
 trans <- preProcess(features,
                     method = c("BoxCox", "center", "scale"))
-trans
 transformed_feat <- predict(trans, features)
 ```
 
@@ -90,7 +91,7 @@ nzv <- nearZeroVar(transformed_feat, saveMetrics = TRUE)
 nzv[nzv[,"nzv"] == TRUE,]
 
 drops <- c("Hyd.Pressure1")
-transformed_feat <- transformed_feat[ ,!(names(transformed_feat) %in% drops)]
+transformed_feat <- transformed_feat[,!(names(transformed_feat) %in% drops)]
 ```
 
 Let's add the pH data back into these features and remove any rows that contain NAs (this data isn't usable since we have no idea what the response variable is).
@@ -104,6 +105,8 @@ missing_data <- data.frame(missing_data)
 
 processed <- processed[complete.cases(processed),]
 ```
+
+# Split Data and Train Model
 
 At this point, I have my features worked the way I want (I think), so I'm going to split the data into a train and test set.
 
@@ -132,12 +135,6 @@ ggplot(data = knnModel$results, aes(x = k, y = RMSE)) +
   geom_line() +
   geom_point()
 
-ggplot(data = knnModel$results, aes(k)) + 
-  geom_line(aes(y = RMSE, color = "RMSE")) + 
-  geom_point(aes(y = RMSE)) +
-  geom_line(aes(y = MAE, color = "MAE")) +
-  geom_point(aes(y = MAE))
-
 # Check best model
 knnPred <- predict(knnModel, newdata = test[,-1])
 
@@ -156,7 +153,7 @@ ggplot(caret_test, aes(x = actual, y = caret)) +
 
 The caret package knn regression function found a minimum MAPE of 1.18% with a k value of 6.
 
-Let's see if I can do better with a different package and more control. Trying to model again with the knn.reg function from the FNN package. This package seems interesting because it allows you to change the distance algorithm.
+Let's see if I can do better with a different package and more control. Trying to model again with the knn.reg function from the FNN package. This package seems interesting because it allows you to change the algorithm, which is a good check on the data size.
 
 ```{r}
 #### knn.reg from FNN ####
@@ -173,7 +170,7 @@ fnn_func <- function(train_x, train_y, test_x, test_y){
                          k = i,
                          algorithm = x)
       
-      mape <- mean(abs(test_y - knn_fnn$pred)/test_y)
+      mape <- mean(abs(test_y - knn_fnn$pred)/test_y)*100
       mape_df <- rbind(mape_df,c(i,mape,x))
     }
   }
@@ -204,7 +201,7 @@ ggplot(fnn_test, aes(x = actual, y = fnn)) +
   geom_point()
 ```
 
-The FNN knn regression gave a minimum MAPE of 1.18% with a k value of 6.This is the same as the caret package model. Unfortunately, it seems there are no differences in any of the promised methods within this package...
+The FNN knn regression gave a minimum MAPE of 1.18% with a k value of 6.This is the same as the caret package model. It seems there are no differences in any of the algorithms within this package, which would indicate that the dataset is rather small. Since there is no decrease in performance for either kd_tree or cover_tree compared to brute, the data is small enough to compute with just the brute method.
 
 I figured I'd try one more package. This time I'm using the kknn package which allows for weighting the nearest neighbors.
 
@@ -218,23 +215,22 @@ kknn_func <- function(train_x, train_y, test_x, test_y){
   
   types <- c("rectangular","triangular",
              "biweight","triweight",
-             "epanechnikov","gaussian",
-             "cos","inv","rank",
-             "optimal")
+             "epanechnikov","optimal")
   
   for(x in types){
-    for(i in 1:4){
+    for(i in 2:30){
       ph_kknn <- kknn(train_y ~ .,
                       train_x,
                       test_x,
-                      distance = i,
+                      k = i,
+                      distance = 1,
                       kernel = x)
       
-      mape <- mean(abs(test_y - ph_kknn$fitted.values)/test_y)
+      mape <- mean(abs(test_y - ph_kknn$fitted.values)/test_y)*100
       mape_df <- rbind(mape_df,c(i,mape,x))
     }
   }
-  colnames(mape_df) <- c("Distance", "MAPE","Type")
+  colnames(mape_df) <- c("k", "MAPE","Type")
   mape_df[,1] <- as.integer(mape_df[,1])
   mape_df[,2] <- as.numeric(mape_df[,2])
   return(mape_df)
@@ -242,7 +238,7 @@ kknn_func <- function(train_x, train_y, test_x, test_y){
 
 kknn_mape <- kknn_func(train[,-1], train[,1], test[,-1], test[,1])
 
-ggplot(data = kknn_mape, aes(x = Distance, y = MAPE, color = Type)) +
+ggplot(data = kknn_mape, aes(x = k, y = MAPE, color = Type)) +
   geom_line() +
   geom_point()
 
@@ -250,8 +246,9 @@ ggplot(data = kknn_mape, aes(x = Distance, y = MAPE, color = Type)) +
 kknn_fit <- kknn(train[,1] ~ .,
                  train[,-1],
                  test[,-1],
+                 k = 18,
                  distance = 1,
-                 kernel = "biweight")
+                 kernel = "triweight")
 
 kknn_test <- data.frame(cbind(kknn_fit$fitted.values,test[,1]))
 colnames(kknn_test) <- c("kknn","actual")
@@ -261,7 +258,118 @@ ggplot(kknn_test, aes(x = actual, y = kknn)) +
   geom_point()
 ```
 
-This model found a minimum MAPE of 0.974% for a biweight kernel at a distance of 1 (Manhattan distance). This is definitely the best MAPE I've achieved so far, so I think I'm gonna stick with this model.
+This model found a minimum MAPE of 0.958% for a triweight kernel at a distance of 1 (Manhattan distance) with a k value of 18. This is definitely the best MAPE I've achieved so far, so I think I'm gonna stick with this model.
+
+The question I have is whether to use a triweight model with k = 18 or a biweight model with k = 12, which is only 0.1% worse (according to MAPE scores). The triweight model seems more complicated to me, though I'm not sure if it really is.
+
+# Hone the top model
+
+I'm going to resample my data and create a new model using the kknn package (my favorite) and see which model is the best this time. Hopefully, this will provide some insight on what to chosoe for my predictions. I'm going to narrow it down to just biweight and triweight this time.
+
+```{r}
+library(kknn)
+
+# Re-sample the data
+set.seed(54321)
+train_ind2 <- sample(seq_len(nrow(processed)),
+                    size = floor(0.75*nrow(processed)))
+
+train2 <- processed[train_ind2,]
+test2 <- processed[-train_ind2,]
+
+# Try out the kknn models again with the new train and test sets
+kknn_func <- function(train_x, train_y, test_x, test_y){
+  mape_df <- data.frame(matrix(nrow = 0, ncol = 3))
+  
+  types <- c("biweight","triweight")
+  
+  for(x in types){
+    for(i in 2:30){
+      ph_kknn <- kknn(train_y ~ .,
+                      train_x,
+                      test_x,
+                      k = i,
+                      distance = 1,
+                      kernel = x)
+      
+      mape <- mean(abs(test_y - ph_kknn$fitted.values)/test_y)*100
+      mape_df <- rbind(mape_df,c(i,mape,x))
+    }
+  }
+  colnames(mape_df) <- c("k", "MAPE","Type")
+  mape_df[,1] <- as.integer(mape_df[,1])
+  mape_df[,2] <- as.numeric(mape_df[,2])
+  return(mape_df)
+}
+
+kknn_mape <- kknn_func(train2[,-1], train2[,1], test2[,-1], test2[,1])
+
+ggplot(data = kknn_mape, aes(x = k, y = MAPE, color = Type)) +
+  geom_line() +
+  geom_point()
+```
+
+This time, triweight was still the winner, but with a k value of 9 (and a MAPE of 0.85%). This has me leaning towards a triweight kernel, but I still need to decide on a k value. Let's try re-sampling many times on just a triweight kernel.
+
+```{r}
+library(kknn)
+
+# Changing the kkhn function to accept seed values and only run a triweight model on Manhattan distance
+kknn_func <- function(train_x, train_y, test_x, test_y, seed){
+  mape_df <- data.frame(matrix(nrow = 0, ncol = 3))
+  
+  for(i in 2:30){
+    ph_kknn <- kknn(train_y ~ .,
+                    train_x,
+                    test_x,
+                    k = i,
+                    distance = 1,
+                    kernel = "triweight")
+    
+    mape <- mean(abs(test_y - ph_kknn$fitted.values)/test_y)*100
+    mape_df <- rbind(mape_df,c(i,mape,seed))
+  }
+  
+  colnames(mape_df) <- c("k", "MAPE","Seed")
+  mape_df[,1] <- as.integer(mape_df[,1])
+  mape_df[,2] <- as.numeric(mape_df[,2])
+  return(mape_df)
+}
+
+# Re-sample the data with 7 different test/train sets
+kknn_mape <- data.frame(matrix(nrow = 0, ncol = 3))
+seeds <- c(1234567,2345671,3456712,4567123,5671234,6712345,7123456)
+
+for(i in seeds){
+  print(i)
+  
+  set.seed(i)
+  train_ind <- sample(seq_len(nrow(processed)),
+                      size = floor(0.75*nrow(processed)))
+  
+  train <- processed[train_ind,]
+  test <- processed[-train_ind,]
+  
+  current_mape <- kknn_func(train[,-1], train[,1], test[,-1], test[,1], i)
+  kknn_mape <- rbind(kknn_mape, current_mape)
+}
+
+colnames(kknn_mape) <- c("k", "MAPE","Seed")
+kknn_mape[,1] <- as.integer(kknn_mape[,1])
+kknn_mape[,2] <- as.numeric(kknn_mape[,2])
+kknn_mape[,3] <- as.factor(kknn_mape[,3])
+
+ggplot(data = kknn_mape, aes(x = k, y = MAPE, color = Seed)) +
+  geom_line() +
+  geom_point()
+
+# Check which value of k performs the best on average
+mape_mean <- aggregate(kknn_mape[,2], list(kknn_mape$k), mean)
+```
+
+It looks like the best values for MAPE are all really close. K values between 17 and 20 all produce a MAPE of approximately 0.905%, with k = 18 being the best value by the slimmest of margins.
+
+# Make Predictions
 
 Finally, lets bring in the data we need to predict and go for it! I'll apply all the same methods to the prediction data and see what happens :)
 
@@ -270,36 +378,43 @@ library(plyr)
 library(caret)
 library(kknn)
 
-predict <- read.csv("https://raw.githubusercontent.com/dmoste/DATA624/main/Project2/StudentEvaluationTOPREDICT.csv")
+# Read in the data
+predict_df <- read.csv("https://raw.githubusercontent.com/dmoste/DATA624/main/Project2/StudentEvaluationTOPREDICT.csv")
 
-
+# Check for missing data
 missing_data <- sapply(predict_df, function(x) sum(is.na(x)))
 missing_data <- data.frame(missing_data)
 
+# Remove PH and Hyd.Pressure1 from the features data
 drops <- c("PH", "Hyd.Pressure1")
 predict_features <- predict_df[,!(names(predict_df) %in% drops)]
 
+# Map Brand.Code values to numerical options
 predict_features[,1] <- mapvalues(predict_features[,1],
                                   from = c("A","B","C","D",""),
                                   to = c(1,2,3,4,NA))
 predict_features[,1] <- as.integer(predict_features[,1])
 
+# Replace missing values with the mean of the predictor
 na_to_mean <- function(x) replace(x, is.na(x), mean(x, na.rm = TRUE))
 predict_features[] <- lapply(predict_features, na_to_mean)
 
+# Apply BoxCox transformations, center the data, and scale it
 trans <- preProcess(predict_features,
                     method = c("BoxCox", "center", "scale"))
-trans
 transformed_feat <- predict(trans, predict_features)
 
+# Recombine the PH response with the transformed features
 predict_df <- cbind(predict_df[,26], transformed_feat)
 names(predict_df)[1] <- ("PH")
 
+# Train and predict using the model decided from the modeling data
 kknn_fit <- kknn(train[,1] ~ .,
                 train[,-1],
                 predict_df[,-1],
+                k = 18,
                 distance = 1,
-                kernel = "triangular")
+                kernel = "triweight")
 
 kknn_fit$fitted.values
 predictions <- data.frame(kknn_fit$fitted.values)
