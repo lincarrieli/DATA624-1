@@ -9,6 +9,8 @@ output: word_document
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
+# Pre-Process
+
 Let's start by bringing in the data and getting a sense of what's there.
 
 ```{r}
@@ -101,6 +103,8 @@ missing_data <- data.frame(missing_data)
 
 processed <- processed[complete.cases(processed),]
 ```
+
+# Split Data and Train Model
 
 At this point, I have my features worked the way I want (I think), so I'm going to split the data into a train and test set.
 
@@ -256,6 +260,8 @@ This model found a minimum MAPE of 0.958% for a triweight kernel at a distance o
 
 The question I have is whether to use a triweight model with k = 18 or a biweight model with k = 12, which is only 0.1% worse (according to MAPE scores). The triweight model seems more complicated to me, though I'm not sure if it really is.
 
+# Hone the top model
+
 I'm going to resample my data and create a new model using the kknn package (my favorite) and see which model is the best this time. Hopefully, this will provide some insight on what to chosoe for my predictions. I'm going to narrow it down to just biweight and triweight this time.
 
 ```{r}
@@ -360,6 +366,8 @@ mape_mean <- aggregate(kknn_mape[,2], list(kknn_mape$k), mean)
 ```
 
 It looks like the best values for MAPE are all really close. K values between 17 and 20 all produce a MAPE of approximately 0.905%, with k = 18 being the best value by the slimmest of margins.
+
+# Make Predictions
 
 Finally, lets bring in the data we need to predict and go for it! I'll apply all the same methods to the prediction data and see what happens :)
 
