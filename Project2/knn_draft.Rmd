@@ -75,7 +75,6 @@ library(caret)
 
 trans <- preProcess(features,
                     method = c("BoxCox", "center", "scale"))
-trans
 transformed_feat <- predict(trans, features)
 ```
 
@@ -88,7 +87,7 @@ nzv <- nearZeroVar(transformed_feat, saveMetrics = TRUE)
 nzv[nzv[,"nzv"] == TRUE,]
 
 drops <- c("Hyd.Pressure1")
-transformed_feat <- transformed_feat[ ,!(names(transformed_feat) %in% drops)]
+transformed_feat <- transformed_feat[,!(names(transformed_feat) %in% drops)]
 ```
 
 Let's add the pH data back into these features and remove any rows that contain NAs (this data isn't usable since we have no idea what the response variable is).
@@ -154,7 +153,7 @@ ggplot(caret_test, aes(x = actual, y = caret)) +
 
 The caret package knn regression function found a minimum MAPE of 1.18% with a k value of 6.
 
-Let's see if I can do better with a different package and more control. Trying to model again with the knn.reg function from the FNN package. This package seems interesting because it allows you to change the distance algorithm.
+Let's see if I can do better with a different package and more control. Trying to model again with the knn.reg function from the FNN package. This package seems interesting because it allows you to change the algorithm, which is a good check on the data size.
 
 ```{r}
 #### knn.reg from FNN ####
@@ -171,7 +170,7 @@ fnn_func <- function(train_x, train_y, test_x, test_y){
                          k = i,
                          algorithm = x)
       
-      mape <- mean(abs(test_y - knn_fnn$pred)/test_y)
+      mape <- mean(abs(test_y - knn_fnn$pred)/test_y)*100
       mape_df <- rbind(mape_df,c(i,mape,x))
     }
   }
@@ -202,7 +201,7 @@ ggplot(fnn_test, aes(x = actual, y = fnn)) +
   geom_point()
 ```
 
-The FNN knn regression gave a minimum MAPE of 1.18% with a k value of 6.This is the same as the caret package model. Unfortunately, it seems there are no differences in any of the promised methods within this package...
+The FNN knn regression gave a minimum MAPE of 1.18% with a k value of 6.This is the same as the caret package model. It seems there are no differences in any of the algorithms within this package, which would indicate that the dataset is rather small. Since there is no decrease in performance for either kd_tree or cover_tree compared to brute, the data is small enough to compute with just the brute method.
 
 I figured I'd try one more package. This time I'm using the kknn package which allows for weighting the nearest neighbors.
 
@@ -228,7 +227,7 @@ kknn_func <- function(train_x, train_y, test_x, test_y){
                       distance = i,
                       kernel = x)
       
-      mape <- mean(abs(test_y - ph_kknn$fitted.values)/test_y)
+      mape <- mean(abs(test_y - ph_kknn$fitted.values)/test_y)*100
       mape_df <- rbind(mape_df,c(i,mape,x))
     }
   }
@@ -268,7 +267,7 @@ library(plyr)
 library(caret)
 library(kknn)
 
-predict <- read.csv("https://raw.githubusercontent.com/dmoste/DATA624/main/Project2/StudentEvaluationTOPREDICT.csv")
+predict_df <- read.csv("https://raw.githubusercontent.com/dmoste/DATA624/main/Project2/StudentEvaluationTOPREDICT.csv")
 
 
 missing_data <- sapply(predict_df, function(x) sum(is.na(x)))
@@ -287,7 +286,6 @@ predict_features[] <- lapply(predict_features, na_to_mean)
 
 trans <- preProcess(predict_features,
                     method = c("BoxCox", "center", "scale"))
-trans
 transformed_feat <- predict(trans, predict_features)
 
 predict_df <- cbind(predict_df[,26], transformed_feat)
