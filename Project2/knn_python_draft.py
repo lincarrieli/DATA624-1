@@ -97,13 +97,25 @@ for i in range(20,30):
         
         row += 1
 
-# Aggregate data to find best k value
+# Aggregate data to find best k value and get the standard deviations
 invertd_s_mape["MAPE"] = invertd_s_mape["MAPE"].astype(float)
-best_k = invertd_s_mape.groupby("k").mean()
+
+mean = invertd_s_mape.groupby("k").mean().to_numpy().flatten()
+sd = invertd_s_mape.groupby("k").std().to_numpy().flatten()
+lb = np.empty(20)
+ub = np.empty(20)
+
+for i in range(0,len(mean)):
+    lb[i] = mean[i] - sd[i]
+    ub[i] = mean[i] + sd[i]
+
+best_k = pd.DataFrame({"Mean": mean, "SD": sd, "LB": lb, "UB": ub},
+                      columns = ["Mean", "SD", "LB", "UB"])
 
 # Generate plot
 plt.title('k-NN: Varying Number of Neighbors Aggregate')
-plt.plot(neighbors, best_k.iloc[:,0])
+plt.plot(neighbors, best_k.loc[:,"Mean"])
+plt.fill_between(neighbors, best_k.loc[:,"LB"], best_k.loc[:,"UB"], color='b', alpha=.1)
 plt.xlabel('Number of Neighbors')
 plt.ylabel('MAPE')
 plt.xticks(range(1,21,2))
