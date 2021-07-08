@@ -1,0 +1,228 @@
+---
+title: 'DATA 624 Proj 2: Linear Models'
+author: "Daniel Moscoe"
+date: "7/8/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(caret)
+library(corrplot)
+library(pls)
+set.seed(0707)
+```
+
+## Import
+
+```{r}
+initial_import.df <- read.csv("https://raw.githubusercontent.com/dmoste/DATA624/main/Project2/StudentDataTOMODEL.csv")
+```
+
+## Tidy
+
+```{r}
+#Move response to end of df
+initial_import.df <- initial_import.df[,c(1:25,27:33,26)]
+
+#Drop missing PH rows
+initial_import.df <- initial_import.df %>%
+  filter(!is.na(PH))
+```
+
+## Transform
+
+```{r}
+#Impute missing values with medians
+initial_import2.df <- lapply(initial_import.df[,2:ncol(initial_import.df)], function(x) replace(x, is.na(x), median(x, na.rm = TRUE)))
+initial_import2.df <- as.data.frame(initial_import2.df)
+initial_import2.df$`Brand.Code` <- initial_import.df$`Brand.Code`
+initial_import2.df <- initial_import2.df[,c(33,1:32)]
+
+#Impute missing Brand Code as "C"
+brand.code_na <- initial_import2.df$Brand.Code == ""
+initial_import2.df[brand.code_na,1] <- "C"
+
+#Center / scale / Box-Cox
+trans <- preProcess(initial_import2.df, method = c("center", "scale", "BoxCox"))
+initial_import3.df <- predict(trans, initial_import2.df)
+
+#Drop low-variance variable
+initial_import3.df <- initial_import3.df[,c(1:12,14:33)]
+
+#Split into train/test
+training_rows <- sample(nrow(initial_import3.df), nrow(initial_import3.df) * 0.80, replace = FALSE)
+train.df <- initial_import3.df[training_rows,]
+test.df <- initial_import3.df[-training_rows,]
+```
+
+## Model: Ordinary Least Squares
+
+Since this section will be about linear models, let's search for highly correlated variables. While removing these variables doesn't guarantee an absence of multicollinearity, it is a useful first step, and can reduce the total number of variables in the model.
+
+```{r}
+corr_matrix <- train.df %>%
+  keep(is.numeric) %>%
+  cor(method = "pearson")
+corrplot::corrplot(corr_matrix, method = "circle", is.corr = TRUE)
+```
+
+Pairs of variables that are highly correlated: `Alch Rel` `Density`, `Balling`, `Carb Rel`, `Balling Lvl`;
+`Air Pressurer` `Carb Rel`, `Balling Lvl`;
+`Bowl Setpoint`, `Filler Level`;
+`Filler Speed`, `MFR`;
+`Hyd Pressure2`, `Hyd Pressure3`;
+`Carb Temp`, `Carb Pressure`;
+
+Keep `Balling` and drop `Balling Lvl` and Density;
+Keep `Alch Rel` and drop `Carb Rel`;
+Keep `Bowl Setpoint` and drop `Filler Level`;
+Keep `MFR` and drop `Filler Speed`;
+Keep `Hyd Pressure2` and drop `Hyd Pressure3`;
+Keep `Carb Pressure` and drop `Carb Temp`.
+
+```{r}
+train1.df <- train.df %>%
+  select(-`Balling.Lvl`,
+         -Density,
+         -`Carb.Rel`,
+         -`Filler.Level`,
+         -`Filler.Speed`,
+         -`Hyd.Pressure3`,
+         -`Carb.Temp`)
+
+corr_matrix <- train1.df %>%
+  keep(is.numeric) %>%
+  drop_na() %>%
+  cor(method = "pearson")
+
+corrplot::corrplot(corr_matrix, method = "circle", is.corr = TRUE)
+
+```
+
+There are still some large correlations remaining, for example, between Balling and `Alch Rel`. But because I know Balling is a measure of sugar content, and I expect that sugar content is related to pH, I'm going to keep it for now. `Mnf Flow` is also correlated to many other variables. It may drop out of a linear model later on.
+
+```{r}
+#OLS
+data_ctrl <- trainControl(method = 'cv', number = 10)
+?train
+train1.lm <- train(train1.df[,1:24], train1.df[,25],
+                   method = "lm")
+summary(train1.lm)
+```
+Note RMSE = 0.7903.
+
+
+```{r}
+names(train1.df)
+```
+
+Before we move on to other models, let's prune variables with p > 0.05.
+
+```{r}
+train2.lm <- train(train1.df[,c(1, 4, 9:12, 14:16, 18:22, 24)], train1.df[,25],
+                   method = "lm")
+summary(train2.lm)
+```
+RMSE = 0.7888, slightly improved from above.
+
+## Visualize
+
+```{r}
+#Actual vs predicted (But I want both these in PH units, not transformed units. What's the best way to do this?)
+#Predicted vs residual
+```
+
+## Model: Partial Least Squares
+
+```{r}
+train.pls <- train(train.df[,1:31], train.df[,32],
+                    method = "pls",
+                    tuneLength = 20,
+                    trControl = data_ctrl)
+```
+
+```{r}
+summary(train.pls)
+plot(x = train.pls$results$ncomp, y = train.pls$results$RMSE)
+```
+
+
+
+
+
+
+```{r}
+print("RMSE:")
+print(train.pls$results$RMSE[13])
+print("R^2:")
+print(train.pls$results$Rsquared[13])
+
+#If you check out the R^2, you'll see that it's even lower for this model than it was for your regular linear model.
+```
+
+```{r}
+#Remember, these are transformed data
+train.pls_predicted <- predict(train.pls, train.df[,1:31])
+
+plot(x = train.df[,32], y = train.pls_predicted)
+```
+
+
+
+
+
+
+```{r}
+#Residuals
+
+plot(x = train.pls_predicted, y = train.df[,32] - train.pls_predicted)
+```
+
+## Model: Elastic Net
+
+```{r}
+enetGrid <- expand.grid(.lambda = c(0, 0.01, 0.1), .fraction = seq(0.05, 1, length = 20))
+enetTune <- train(train.df[,2:31], train.df[,32],
+                  method = "enet",
+                  tuneGrid = enetGrid,
+                  trControl = data_ctrl)
+```
+
+## Visualize
+
+```{r}
+ggplot(data = enetTune$results, aes(x = fraction, y = RMSE, color = lambda)) +
+  geom_point()
+```
+
+Minimum RMSE is not less than 0.8.
+
+```{r}
+ggplot(data = enetTune$results, aes(x = fraction, y = Rsquared, color = lambda)) +
+  geom_point()
+```
+
+```{r}
+enet_predicted <- predict(enetTune, train.df[,1:31])
+plot(x = train.df[,32], y = enet_predicted)
+```
+
+```{r}
+plot(x = enet_predicted, y = train.df[,32] - enet_predicted)
+```
+
+## Test best model, PLS
+
+```{r}
+testset_predicted <- predict(train.pls, test.df[,1:31])
+PLS_test <- data.frame(cbind(test.df[,32], testset_predicted))
+PLS_test_RMSE <- sqrt(sum((PLS_test$testset_predicted - PLS_test$V1)^2) / nrow(PLS_test))
+```
+RMSE = 0.7657
+It did pretty well!
+
+## Predict
+
+I'm not sure yet how to do this. Should I impute using the median values in the set to predict? Impute using the median values from the training set? What Box-Cox parameters should I use? Centering/scaling parameters? Then, once I predict the transformed data, how do I get it back to the regular pH scale?

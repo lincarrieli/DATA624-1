@@ -2,7 +2,9 @@
 title: "KNN"
 author: "David Moste"
 date: "7/7/2021"
-output: word_document
+output:
+  html_document:
+    df_print: paged
 ---
 
 ```{r setup, include=FALSE}
