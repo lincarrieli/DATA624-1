@@ -2,9 +2,7 @@
 title: "KNN"
 author: "David Moste"
 date: "7/7/2021"
-output:
-  html_document:
-    df_print: paged
+output: word_document
 ---
 
 ```{r setup, include=FALSE}
@@ -365,6 +363,15 @@ ggplot(data = kknn_mape, aes(x = k, y = MAPE, color = Seed)) +
 
 # Check which value of k performs the best on average
 mape_mean <- aggregate(kknn_mape[,2], list(kknn_mape$k), mean)
+mape_sd <- aggregate(kknn_mape[,2], list(kknn_mape$k), sd)
+mape_data <- cbind(mape_mean, mape_sd[,2]) %>%
+  mutate(LB = x - mape_sd[,2], UB = x + mape_sd[,2])
+colnames(mape_data) <- c("k", "MAPE", "SD", "LB", "UB")
+
+# Visualize the aggregate data
+ggplot(data = mape_data, aes(x = k, y = MAPE)) +
+  geom_line() +
+  geom_ribbon(aes(ymin = LB, ymax = UB), alpha = 0.2)
 ```
 
 It looks like the best values for MAPE are all really close. K values between 17 and 20 all produce a MAPE of approximately 0.905%, with k = 18 being the best value by the slimmest of margins.
