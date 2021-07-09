@@ -9,7 +9,7 @@ df = pd.read_csv("https://raw.githubusercontent.com/dmoste/DATA620/main/knn_proc
 
 # Load the data and target values into variables X and y
 X = df.iloc[:,1:33].to_numpy()
-y = df.iloc[:,0:1].to_numpy()
+y = df.iloc[:,0].to_numpy()
 
 # Split the data in testing and training sets
 X_train, X_test, y_train, y_test = tts(X, y, test_size = 0.25, random_state = 20)
@@ -17,8 +17,8 @@ X_train, X_test, y_train, y_test = tts(X, y, test_size = 0.25, random_state = 20
 # Setup containers to store MAPE values
 neighbors = np.arange(1, 21)
 
-columns = ["uniform", "inverse", "inverse squared"]
-mape_scores = pd.DataFrame(index = neighbors, columns = columns)
+mape_scores = pd.DataFrame(index = neighbors,
+                           columns = ["uniform", "inverse", "inverse squared"])
 
 # Define a function for inverse squared weights
 def inverse_squared_weights(weights):
@@ -64,8 +64,8 @@ plt.show()
 # Honing the k value by training on multiple splits
 
 # Create container for MAPE scores
-columns = ["k", "MAPE", "seed"]
-invertd_s_mape = pd.DataFrame(index = np.arange(1,201), columns = columns)
+invertd_s_mape = pd.DataFrame(index = np.arange(1,201),
+                              columns = ["k", "MAPE", "seed"])
 
 row = 0
 
