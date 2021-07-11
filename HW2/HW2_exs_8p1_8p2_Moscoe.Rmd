@@ -71,7 +71,7 @@ rfImp2
 
 #### Response
 
-The importance score for V1 is reduced when another highly correlated predictor variable is added to the model. This example serves as a warning about interpreting results of random forests that contain correlated variables. When several variables are highly correlated, it's sometimes more informative to measure their importance together as a group. Or, a measure of variable importance such as Strobl et al.'s could be used instead (see p. 202).
+The importance score for V1 is reduced when another highly correlated predictor variable is added to the model. This example serves as a warning about interpreting results of random forests that contain correlated variables. When several variables are highly correlated, it's sometimes more informative to measure their importance together as a group. Or, a measure of variable importance such as Strobl et al.'s could be used instead.
 
 #### Question
 
@@ -177,7 +177,7 @@ btImp7.ri <- summary.gbm(object = model7, method = relative.influence)
 btImp8.ri <- summary.gbm(object = model8, method = relative.influence)
 btImp9.ri <- summary.gbm(object = model9, method = relative.influence)
 
-#Variable importance scores with conditional = FALSE
+#Variable importance scores with method = permutation.test.gbm
 btImp7.pt <- summary.gbm(object = model7, method = permutation.test.gbm)
 btImp8.pt <- summary.gbm(object = model8, method = permutation.test.gbm)
 btImp9.pt <- summary.gbm(object = model9, method = permutation.test.gbm)

@@ -72,13 +72,14 @@ corr_matrix <- cbind(train_preds.df, train_resp.df) %>%
 corrplot::corrplot(corr_matrix, method = "circle", is.corr = TRUE)
 ```
 
-Pairs of variables that are highly correlated: `Alch Rel` `Density`, `Balling`, `Carb Rel`, `Balling Lvl`;
+Groups of variables that are highly correlated: `Alch Rel` `Density`, `Balling`, `Carb Rel`, `Balling Lvl`;
 `Air Pressurer` `Carb Rel`, `Balling Lvl`;
 `Bowl Setpoint`, `Filler Level`;
 `Filler Speed`, `MFR`;
 `Hyd Pressure2`, `Hyd Pressure3`;
-`Carb Temp`, `Carb Pressure`;
+`Carb Temp`, `Carb Pressure`.
 
+To avoid collinearity in a linear model, we eliminate some of the most highly correlated variables:  
 Keep `Balling` and drop `Balling Lvl` and Density;
 Keep `Alch Rel` and drop `Carb Rel`;
 Keep `Bowl Setpoint` and drop `Filler Level`;
@@ -104,7 +105,7 @@ corrplot::corrplot(corr_matrix, method = "circle", is.corr = TRUE)
 
 ```
 
-There are still some large correlations remaining, for example, between Balling and `Alch Rel`. But because I know Balling is a measure of sugar content, and I expect that sugar content is related to pH, I'm going to keep it for now. `Mnf Flow` is also correlated to many other variables. It may drop out of a linear model later on.
+There are still some large correlations remaining, for example, between `Balling` and `Alch Rel`. But because I know Balling is a measure of sugar content, and I expect that sugar content is related to pH, I'm going to keep it for now. `Mnf Flow` is also correlated to many other variables. It may drop out of a linear model later on.
 
 ```{r}
 #OLS
@@ -114,11 +115,12 @@ train1.lm <- train(train_preds2.df, train_resp.df,
 summary(train1.lm)
 ```
 Note RMSE = 0.1345.
-MAPE: 1.217
 
 ```{r}
 train1_MAPE <- 100 * (sum(abs(train1.lm$finalModel$residuals) / train_resp.df)) / length(train_resp.df)
 ```
+
+MAPE = 1.217.
 
 Before we move on to other models, let's prune variables with p > 0.05.
 
@@ -126,24 +128,42 @@ Before we move on to other models, let's prune variables with p > 0.05.
 train2.lm <- train(train_preds2.df[,c(3, 8:11, 13:15, 17:21, 23, 24)], train_resp.df, method = "lm")
 summary(train2.lm)
 ```
+
 RMSE = 0.1345.
 
-MAPE: 1.219
 ```{r}
 train2_MAPE <- 100 * (sum(abs(train2.lm$finalModel$residuals) / train_resp.df)) / length(train_resp.df)
 ```
+
+MAPE: 1.219.  
+
+After dropping variables with high p-values, the simpler model retains almost all its explanatory power.
 
 ## Visualize
 
 ```{r}
 #Actual vs predicted
-plot(x = train_resp.df, y = train2.lm$finalModel$fitted.values)
-
-#Predicted vs residual
-plot(x = train2.lm$finalModel$fitted.values, y = train2.lm$finalModel$residuals)
+plot(x = train_resp.df, y = train2.lm$finalModel$fitted.values,
+     xlab = "Actual pH values for training set",
+     ylab = "Fitted pH values for linear model",
+     main = "Fitted vs Actual pH values for training set")
 ```
 
+The plot of fitted vs actual values for the training data shows a clear positive linear relationship, although variability is large. The large variability corresponds to the relatively low value of $R^2 = 0.40$.
+
+```{r}
+#Predicted vs residual
+plot(x = train2.lm$finalModel$fitted.values, y = train2.lm$finalModel$residuals,
+     xlab = "Fitted pH values for linear model",
+     ylab = "Residuals from linear model",
+     main = "Residuals vs Fitted pH values for training set")
+```
+
+The residuals appear to be randomly distributed with roughly constant variability about a mean of zero.
+
 ## Model: Partial Least Squares
+
+Because there is large possibility of multicollinearity in linear models involving this data, feature selection is an important part of the modeling process. Partial least squares performs a kind of feature selection, because it generates new uncorrelated predictors based on "underlying... relationships among the predictors which are highly correlated with the response (KJ 114).
 
 ```{r}
 train.pls <- train(train_preds.df, train_resp.df,
@@ -154,8 +174,13 @@ train.pls <- train(train_preds.df, train_resp.df,
 
 ```{r}
 summary(train.pls)
-plot(x = train.pls$results$ncomp, y = train.pls$results$RMSE)
+plot(x = train.pls$results$ncomp, y = train.pls$results$RMSE,
+     xlab = "Number of components in PLS model",
+     ylab = "RMSE",
+     main = "RMSE declines then stabilizes with increase in PLS components")
 ```
+
+The optimal number of components for the PLS model is 13.
 
 ```{r}
 print("RMSE:")
@@ -163,27 +188,33 @@ print(train.pls$results$RMSE[13])
 print("R^2:")
 print(train.pls$results$Rsquared[13])
 
-#If you check out the R^2, you'll see that it's even lower for this model than it was for your regular linear model.
 ```
+
+Examining the actual and predicted values of the response variable:
 
 ```{r}
 train.pls_predicted <- predict(train.pls, train_preds.df)
 
-plot(x = train_resp.df, y = train.pls_predicted)
+plot(x = train_resp.df, y = train.pls_predicted,
+     xlab = "Actual pH values for training set",
+     ylab = "PLS Fitted pH values for training set",
+     main = "Fitted vs actual pH values for training set")
 ```
-
-
-
-
-
 
 ```{r}
 #Residuals
 
-plot(x = train.pls_predicted, y = train_resp.df - train.pls_predicted)
+plot(x = train.pls_predicted, y = train_resp.df - train.pls_predicted,
+     xlab = "Fitted pH values for PLS model",
+     ylab = "Residuals from PLS model",
+     main = "PLS Residuals vs Fitted pH values for training set")
 ```
 
+The residuals appears to be randomly distributed with roughly constant variability about a mean of zero.
+
 ## Model: Elastic Net
+
+An elastic net model is another linear modeling method that performs feature selection and is robust to multicollinearity. The elastic net model combines a ridge penalty with a lasso penalty on model coefficients to improve the overall stability of the model. Elastic net models tolerate some increase in coefficient bias in order to reduce variance. Here, we search a range of lasso and ridge parameters to determine an optimal model. 
 
 ```{r}
 enetGrid <- expand.grid(.lambda = c(0, 0.01, 0.1), .fraction = seq(0.05, 1, length = 20))
@@ -193,32 +224,52 @@ enetTune <- train(train_preds.df[,-31], train_resp.df,
                   trControl = data_ctrl)
 ```
 
+The optimal model occurs with $\lambda = 0$ and fraction = 1. This is equivalent to a pure lasso model. Including a ridge penalty did not improve model performance.
+
 ## Visualize
 
 ```{r}
 ggplot(data = enetTune$results, aes(x = fraction, y = RMSE, color = lambda)) +
-  geom_point()
+  geom_point() +
+  xlab("Fraction of full solution") +
+  ylab("RMSE") +
+  ggtitle("Optimal RMSE = 0.139 for pure lasso model with all predictors")
 ```
 
-Minimum RMSE is 0.1387272.
+Minimum RMSE is 0.1387272.  
 
 ```{r}
 ggplot(data = enetTune$results, aes(x = fraction, y = Rsquared, color = lambda)) +
-  geom_point()
+  geom_point() +
+  xlab("Fraction of full solution") +
+  ylab("R-Squared") +
+  ggtitle("R-squared is maximized for lam = 0, frac = 1")
 ```
 
-Max r^2 = 0.365.
+For the optimal elastic net model, $R^2 = 0.365$.
 
 ```{r}
 enet_predicted <- predict(enetTune, train_preds.df[,-31])
-plot(x = train_resp.df, y = enet_predicted)
+plot(x = train_resp.df, y = enet_predicted,
+     xlab = "Actual pH values",
+     ylab = "Fitted pH values for Elastic Net model",
+     main = "Actual vs Fitted pH values for Elastic Net model")
 ```
 
+The relationship between actual and fitted values is linear with positive slope. It demonstrates constant but large variability, consistent with a relatively low value of $R^2 = 0.365$.
+
 ```{r}
-plot(x = enet_predicted, y = train_resp.df - enet_predicted)
+plot(x = enet_predicted, y = train_resp.df - enet_predicted,
+     xlab = "Fitted pH Values for Elastic Net",
+     ylab = "Residuals from Elastic Net Model",
+     main = "Residuals vs Fitted pH Values for Elastic Net")
 ```
-################
+
+The residuals appear to be randomly distributed about a mean of zero. Variability appears to be largest near fitted values around 8.6.
+
 ## Test best model, PLS
+
+The model with the best performance among those examined here is PLS. Here we test the performance of the PLS model on the holdout data.
 
 ```{r}
 testset_predicted <- predict(train.pls, test_preds.df)
@@ -235,7 +286,11 @@ print("RMSE:")
 print(PLS_test_RMSE)
 ```
 
+The PLS model performs similarly on the holdout data as it did on the test set. This provides evidence that the model has not been over-fitted to the training data.
+
 ## Predict
+
+Finally, we use the PLS model to predict pH values for new samples.
 
 ```{r}
 final_preds.df <- to_predict.df[,-26]
