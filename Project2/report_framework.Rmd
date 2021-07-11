@@ -1,0 +1,117 @@
+---
+title: "Predicting Beverage pH"
+author: "S. Kigamba, L. Li, P. Maloney, D. Moscoe, and D. Moste"
+date: "7/17/2021"
+output: word_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(caret)
+library(corrplot)
+library(knitr)
+```
+
+[[NOTE TO TEAM MEMBERS: One approach to dealing with an excess of R code / output is to adjust chunk options in this Rmd. We can set chunk options so that code or output is excluded from the Word-knitted version of our report. But if Prof. Burk would like to examine the details, he could open the accompanying Rmd. This might be a good way to make the code available to him without creating another document, while also closely connecting the code to its context in the report. As we build the report, if we decide we do / don't want to include a particular piece of code/output, we can just toggle the chunk option for that code/output.]]
+
+```{r}
+initial_import.df <- read.csv("https://raw.githubusercontent.com/dmoste/DATA624/main/Project2/StudentDataTOMODEL.csv")
+to_predict.df <- read.csv("https://raw.githubusercontent.com/dmoste/DATA624/main/Project2/StudentEvaluationTOPREDICT.csv")
+```
+
+
+## Introduction
+
+pH is a key performance indicator for the beverage manufacturing process. Because beverage products must maintain a pH within a critical range, it's important to understand how pH relates to other quantifiable aspects of beverage manufacturing. In this report, we seek a model for predicting beverage pH based on data about the beverage itself, along with its manufacturing and bottling process.  
+
+Our criterion for a successful model is low mean absolute percent error (MAPE) when the model is run on test data. In the sections below, we describe the data, sketch our modeling process, and detail the optimal model for predicting pH. We also describe other models that performed nearly as well as the optimal model.  
+
+## About the data
+
+The data set contains information on 2,571 samples of 24-ounce bottled beverages. Most samples comprise information on 33 variables, including pH, although some data is missing. Overall, less than 1% of values are missing from the data set. We found no pattern in the missing data.  
+
+With the exception of `Brand Code`, every variable is quantitative. Some variables, especially `Hyd Pressure1`, exhibit low variance. Other variables are highly correlated, which suggests the data set contains some redundant information. We also notice significant skewness in some of the variables.  
+
+A correlation plot shows the pairwise correlations in the data set:
+
+```{r}
+###
+corr_matrix <- initial_import.df %>%
+  keep(is.numeric) %>%
+  drop_na() %>%
+  cor(method = "pearson")
+
+corrplot::corrplot(corr_matrix, method = "circle", is.corr = TRUE)
+```
+
+The response variable, pH, is roughly normally distributed, with mean 8.55 and standard deviation 0.173.  
+
+```{r}
+ggplot(data = initial_import.df, aes(x = PH)) +
+  geom_histogram() +
+  xlab("pH") +
+  ylab("Frequency") +
+  ggtitle("Response Variable pH is Roughly Normally Distributed")
+```
+
+The explanatory variables exhibit a variety of distributions.
+
+```{r}
+initial_import.df %>%
+  keep(is.numeric) %>%
+  gather() %>%
+  ggplot(aes(value)) +
+  facet_wrap(~ key, scales = "free") + 
+  geom_histogram()
+```
+
+## Our modeling process
+
+In this report we explore a range of linear models, tree models, and neural nets to identify a procedure that is highly accurate in predicting the pH of a previously unseen beverage. For each model, we take the following steps:  
+
+(1) Impute missing data if necessary;
+(2) Transform data to address skewness, outliers, and low-variance variables;
+(3) Check that data conform to the assumptions of the model;
+(4) Fit a model and use cross-validation or another procedure to optimize parameters;
+(5) Examine residuals;
+(6) Compute model metrics.
+
+[[Say something about where you can find the details on these steps for each model. I'm not sure where the best place to put this information is... but I do know Burk did not like our appendix. Maybe we can put the information at the end of the report, but not call that section "Appendix"? We could call it "Other models." Okay, I'm adding that section.]]
+
+## Summary of models
+
+- What models did we examine?
+- What patterns do we notice in the models? E.g., are tree models clearly best for this data?
+- What models are most accurate?
+- What models are most informative?
+
+```{r results = 'asis'}
+
+Type <- c("OLS", "PLS", "Elastic Net", "KNN")
+Parameters <- c("None", "Components = 13", "Lambda = 0, Fraction = 1", "y")
+MAPE <- c(1.22, 1.19, 1.24, 0.91)
+RMSE <- c(0.135, 0.134, 0.139, 0.11)
+
+df <- data.frame(Type, Parameters, MAPE, RMSE)
+
+#Put table in descending order of MAPE
+kable(df, caption = "Summary of models")
+
+```
+
+
+## Optimal model: [model name]
+
+- Go carefully through each step in "Our modeling process."
+- Any guesses about why this was the minimum-MAPE model?
+- Can you think of any next steps you might take to improve the model even further?
+
+## Other models
+
+
+
+## Conclusion
+
+- Was there a clear winner, or did several models perform roughly equally?
+- Any data we wish we had, but don't?
