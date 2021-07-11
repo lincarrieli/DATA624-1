@@ -19,7 +19,7 @@ data <- read.csv("https://raw.githubusercontent.com/dmoste/DATA624/main/Project2
 summary(data)
 
 cc <- complete.cases(data)
-length(cc[cc == FALSE])/length(cc)
+(length(cc[cc == TRUE])/length(cc))*100
 
 missing_data <- sapply(data, function(x) sum(is.na(x)))
 missing_data <- data.frame(missing_data)
@@ -29,7 +29,7 @@ unique(data[,1])
 length(data[data[,1] == "",])
 ```
 
-Clearly there is some missing data, so that needs to be dealt with first. Since only 0.8% of the data is missing, I think there is enough full data that I can just fill in missing values with the mean for each predictor. To do this, I first have to map the Brand.Code predictor into numerical values.
+Clearly there is some missing data, so that needs to be dealt with first. Since only 0.85% of the data is missing and 83% of the rows are complete, I think there is enough full data that I can just fill in missing values with the mean for each predictor. To do this, I first have to map the Brand.Code predictor into numerical values since I noticed it had some missing values coded as "".
 
 ```{r}
 library(plyr)
@@ -38,22 +38,12 @@ data[,1] <- mapvalues(data[,1],
                       to = c(1,2,3,4,NA))
 data[,1] <- as.integer(data[,1])
 
-# Removing the response variable since I don't want to impute these values
+# Removing the response variable since I don't want to impute or transform these values
 drops <- c("PH")
-features <- data[ ,!(names(data) %in% drops)]
+features <- data[,!(names(data) %in% drops)]
 
 na_to_mean <- function(x) replace(x, is.na(x), mean(x, na.rm = TRUE))
 features[] <- lapply(features, na_to_mean)
-```
-
-Check to ensure that the data has been completed.
-
-```{r}
-cc <- complete.cases(features)
-length(cc[cc == FALSE])/length(cc)
-
-missing_data <- sapply(features, function(x) sum(is.na(x)))
-missing_data <- data.frame(missing_data)
 ```
 
 Now I'm going to work on getting some sort of visualization of the data.
@@ -70,7 +60,7 @@ ggplot(data = vis_features, aes(x = value)) +
   facet_wrap(variable ~ ., scales = "free")
 ```
 
-KNN is HIGHLY sensitive to the scale of predictors, so I'm going to go ahead and center and scale the predictors before building a model.
+KNN is HIGHLY sensitive to the scale of predictors, so I'm going to go ahead and center and scale the predictors before building a model. I'm also going to use a BoxCox transformation to fix any skewed data as much as possible (some of this data is pretty wacky).
 
 ```{r}
 library(caret)
@@ -88,6 +78,7 @@ library(caret)
 nzv <- nearZeroVar(transformed_feat, saveMetrics = TRUE)
 nzv[nzv[,"nzv"] == TRUE,]
 
+# Removing Hy.Pressure1 since it has near zero variance
 drops <- c("Hyd.Pressure1")
 transformed_feat <- transformed_feat[,!(names(transformed_feat) %in% drops)]
 ```
@@ -98,8 +89,8 @@ Let's add the pH data back into these features and remove any rows that contain 
 processed <- cbind(data[,26], transformed_feat)
 names(processed)[1] <- ("PH")
 
-missing_data <- sapply(processed, function(x) sum(is.na(x)))
-missing_data <- data.frame(missing_data)
+# Checking if any of the pH data is missing
+summary(processed$PH)
 
 processed <- processed[complete.cases(processed),]
 ```
@@ -120,14 +111,16 @@ test <- processed[-train_ind,]
 Let's go ahead and build a model with the training data!
 
 ```{r}
+library(caret)
+library(ggplot2)
+library(tidyverse)
+
 #### train from caret ####
 knnModel <- train(train[,-1],
                  train[,1],
                  method = "knn",
                  tuneGrid = data.frame(.k = 1:20),
                  trControl = trainControl(method = "cv"))
-
-knnModel
 
 ggplot(data = knnModel$results, aes(x = k, y = RMSE)) +
   geom_line() +
@@ -154,8 +147,8 @@ The caret package knn regression function found a minimum MAPE of 1.18% with a k
 Let's see if I can do better with a different package and more control. Trying to model again with the knn.reg function from the FNN package. This package seems interesting because it allows you to change the algorithm, which is a good check on the data size.
 
 ```{r}
-#### knn.reg from FNN ####
 library(FNN)
+library(ggplot2)
 
 fnn_func <- function(train_x, train_y, test_x, test_y){
   mape_df <- data.frame(matrix(nrow = 0, ncol = 3))
@@ -189,7 +182,7 @@ fnn_fit <- knn.reg(train = train[,-1],
                    test = test[,-1],
                    y = train[,1],
                    k = 6,
-                   algorithm = "kd_tree")
+                   algorithm = "brute")
 
 fnn_test <- data.frame(cbind(fnn_fit$pred,test[,1]))
 colnames(fnn_test) <- c("fnn","actual")
@@ -204,9 +197,8 @@ The FNN knn regression gave a minimum MAPE of 1.18% with a k value of 6.This is 
 I figured I'd try one more package. This time I'm using the kknn package which allows for weighting the nearest neighbors.
 
 ```{r}
-#### kknn from kknn ####
-
 library(kknn)
+library(ggplot2)
 
 kknn_func <- function(train_x, train_y, test_x, test_y){
   mape_df <- data.frame(matrix(nrow = 0, ncol = 3))
@@ -266,6 +258,7 @@ I'm going to resample my data and create a new model using the kknn package (my 
 
 ```{r}
 library(kknn)
+library(ggplot2)
 
 # Re-sample the data
 set.seed(54321)
@@ -311,10 +304,11 @@ This time, triweight was still the winner, but with a k value of 9 (and a MAPE o
 
 ```{r}
 library(kknn)
+library(ggplot2)
 
 # Changing the kkhn function to accept seed values and only run a triweight model on Manhattan distance
 kknn_func <- function(train_x, train_y, test_x, test_y, seed){
-  mape_df <- data.frame(matrix(nrow = 0, ncol = 3))
+  mape_df <- data.frame(matrix(nrow = 0, ncol = 4))
   
   for(i in 2:30){
     ph_kknn <- kknn(train_y ~ .,
@@ -325,39 +319,51 @@ kknn_func <- function(train_x, train_y, test_x, test_y, seed){
                     kernel = "triweight")
     
     mape <- mean(abs(test_y - ph_kknn$fitted.values)/test_y)*100
-    mape_df <- rbind(mape_df,c(i,mape,seed))
+    rmse <- sqrt(mean((test_y - ph_kknn$fitted.values)^2))
+    mape_df <- rbind(mape_df,c(i,mape,rmse,seed))
+    
+    colnames(mape_df) <- c("k", "MAPE", "RMSE", "Seed")
+    mape_df[,1] <- as.integer(mape_df[,1])
+    mape_df[,2] <- as.numeric(mape_df[,2])
+    mape_df[,3] <- as.numeric(mape_df[,3])
+    mape_df[,4] <- as.factor(mape_df[,4])
   }
-  
-  colnames(mape_df) <- c("k", "MAPE","Seed")
-  mape_df[,1] <- as.integer(mape_df[,1])
-  mape_df[,2] <- as.numeric(mape_df[,2])
   return(mape_df)
 }
 
 # Re-sample the data with 7 different test/train sets
-kknn_mape <- data.frame(matrix(nrow = 0, ncol = 3))
+kknn_mape <- data.frame(matrix(nrow = 0, ncol = 4))
 seeds <- c(1234567,2345671,3456712,4567123,5671234,6712345,7123456)
 
 for(i in seeds){
   print(i)
   
   set.seed(i)
-  train_ind <- sample(seq_len(nrow(processed)),
+  train_ind3 <- sample(seq_len(nrow(processed)),
                       size = floor(0.75*nrow(processed)))
   
-  train <- processed[train_ind,]
-  test <- processed[-train_ind,]
+  train3 <- processed[train_ind3,]
+  test3 <- processed[-train_ind3,]
   
-  current_mape <- kknn_func(train[,-1], train[,1], test[,-1], test[,1], i)
+  current_mape <- kknn_func(train3[,-1],
+                            train3[,1],
+                            test3[,-1],
+                            test3[,1],
+                            i)
   kknn_mape <- rbind(kknn_mape, current_mape)
 }
 
-colnames(kknn_mape) <- c("k", "MAPE","Seed")
+colnames(kknn_mape) <- c("k", "MAPE", "RMSE", "Seed")
 kknn_mape[,1] <- as.integer(kknn_mape[,1])
 kknn_mape[,2] <- as.numeric(kknn_mape[,2])
-kknn_mape[,3] <- as.factor(kknn_mape[,3])
+kknn_mape[,3] <- as.numeric(kknn_mape[,3])
+kknn_mape[,4] <- as.factor(kknn_mape[,4])
 
 ggplot(data = kknn_mape, aes(x = k, y = MAPE, color = Seed)) +
+  geom_line() +
+  geom_point()
+
+ggplot(data = kknn_mape, aes(x = k, y = RMSE, color = Seed)) +
   geom_line() +
   geom_point()
 
@@ -423,7 +429,6 @@ kknn_fit <- kknn(train[,1] ~ .,
                 distance = 1,
                 kernel = "triweight")
 
-kknn_fit$fitted.values
 predictions <- data.frame(kknn_fit$fitted.values)
 ```
 
