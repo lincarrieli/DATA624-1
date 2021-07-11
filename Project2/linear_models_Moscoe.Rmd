@@ -188,6 +188,12 @@ print(train.pls$results$RMSE[13])
 print("R^2:")
 print(train.pls$results$Rsquared[13])
 
+PLS_resid <- train.pls$finalModel$residuals[, 1, 13]
+train_PLS_MAPE <- (100 / length(train_resp.df)) * sum(abs(PLS_resid /train_resp.df))
+
+print("MAPE:")
+print(train_PLS_MAPE)
+
 ```
 
 Examining the actual and predicted values of the response variable:
@@ -257,6 +263,16 @@ plot(x = train_resp.df, y = enet_predicted,
 ```
 
 The relationship between actual and fitted values is linear with positive slope. It demonstrates constant but large variability, consistent with a relatively low value of $R^2 = 0.365$.
+
+```{r}
+#MAPE for Elastic Net:
+
+enet_MAPE <- (100 / length(train_resp.df)) * sum(abs((train_resp.df - enet_predicted) / train_resp.df))
+
+print("MAPE for elastic net:")
+print(enet_MAPE)
+```
+
 
 ```{r}
 plot(x = enet_predicted, y = train_resp.df - enet_predicted,
