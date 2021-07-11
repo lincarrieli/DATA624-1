@@ -1,0 +1,566 @@
+---
+title: "DATA624 Project2"
+author: "Samuel I Kigamba"
+date: "July 10, 2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r paged.print=TRUE,  include=FALSE}
+library(readxl)
+library(skimr)
+library(naniar)
+library(VIM)
+library(MASS)
+library(forecast)
+library(mixtools)
+library(caret)
+library(parallel)
+library(mlbench)
+library(rpart.plot)
+library(ggplot2)
+library(ggfortify)
+library(gridExtra)
+library(ggcorrplot)
+library(corrplot)
+library(RColorBrewer)
+library(fpp2)
+library(fma)
+library(kableExtra)
+library(e1071)
+library(timeDate)
+library(tidyverse)
+library(dplyr)
+library(tidyr)
+library(reshape2)
+library(tibble)
+library(doParallel)
+
+```
+
+
+## Instructions
+
+### Overview - Project #2 - Requirements
+You are given a simple data set from a beverage manufacturing company.  It consists of 2,571 rows/cases of data and 33 columns / variables. Your goal is to use this data to predict PH (a column in the set).  Potential for hydrogen (pH) is a measure of acidity/alkalinity, it must conform in a critical range and therefore it is important to understand its influence and predict its values.   This is production data.  pH is a KPI, Key Performance Indicator. 
+
+You are also given a scoring set (267 cases).  All variables other than the dependent or target.  You will use this data to score your model with your best predictions. 
+
+
+### Deliverables
+
+You are to submit a professional, easy to read report.  The consumers of this report are executives, data scientists and engineers.  You need to communicate to all audiences; therefore you cannot just present a technical report.  You should provide commentary on your approach, why you are taking this approach and your findings along the way.  The report should be very easy to navigate, follow and understand.  You must explain what/how/why. And submit your scored results.   Your representative will submit the materials to me in an email with a minimal of two attachments - A Word readable doc (Report), An Excel readable doc (my XLS to you with the predictions), all as before.  An R Markdown file is appreciated, but not required.  I will need your code either in the Word document or the markdown so I can reproduce results.  Please include all libraries you are using - all code from A to Z and the code should be well documented as if you are passing off to a production engineer.  
+
+Note the modeling/scoring in this exercise is not really that difficult, you can differentiate your team in your report.
+
+
+## Introduction
+
+Our team's analysis seeks to build understanding of the ABC Beverage manufacturing process and the related factors that affect the pH of the company's beverage products. Our goal is to build a model that both predicts product PH, given manufacturing steps and identify which steps appear to have the most impact on pH.
+
+We will start by understanding the dataset.  Specifically are the any missing data, outliers or odd feature distributions that might complicate modeling.
+We will then do any necessary data cleaning, split our data into training and testing set so we can more accurately determine model performance on out-of-set data samples.  
+We will preform a number of different machine learning approaches, touching on different broad prediction approaches including: Support VEctor Machines (SVM) and Multivariate Adaptive Regression We will then choose the model that performs best and use that to predict final pH on a holdout evaluation dataset.
+
+Note - we are doing an observational study so any correlations we identify would need to be followed up with testing to identify causal relationships.
+
+## 1. Data Exploration
+
+### Dataset
+
+The training data set contains 32 categorical, continuous, or discrete features and 2571 rows, with 267 rows reserved for an evaluation set that lacks the target. 
+The target is `PH`, which should be a continuous variable but has 52 distinct values in the training set. 
+As a result, possible predictive models could include regression, classification, or an ensemble of both.
+
+There are two files provided:
+
+-   **StudentData.xlsx** - The data set we use to train our model. It contains `PH`, the feature we seek to predict.
+-   **StudentEvaluation.xlsx** - The data set we use to evaluate our model. It lacks `PH`. Our model will have to be scored by an outside group with knowledge of the actual pH values.
+
+
+```{r load_data}
+
+# Load beverages data set into a dataframe
+df <- read_excel('C:/Users/wb508205/OneDrive - WBG/Documents/QSA/DATA Science CUNY/DATA 624 Predictive Analytics/HW2 & Project 2/StudentDataTOMODEL.xlsx')
+df_eval <- read_excel('C:/Users/wb508205/OneDrive - WBG/Documents/QSA/DATA Science CUNY/DATA 624 Predictive Analytics/HW2 & Project 2/StudentEvaluationTOPREDICT.xlsx')
+
+#df = read.csv("https://raw.githubusercontent.com/dmoste/DATA624/main/Project2/StudentDataTOMODEL.csv", header = TRUE)
+#df_eval = read.csv("https://raw.githubusercontent.com/dmoste/DATA624/main/Project2/StudentEvaluationTOPREDICT.csv", header = TRUE)
+
+# Exclude the empty PH column from the evaluation dataset
+df_eval <- df_eval %>%
+  dplyr::select(-PH)
+
+```
+
+Below is a list of the variables of interest in the data set:
+
+`Brand Code`: categorical, values: A, B, C, D
+`Carb Volume`:
+`Fill Ounces`:
+`PC Volume`:
+`Carb Pressure`:
+`Carb Temp`:
+`PSC`:
+`PSC Fill`:
+`PSC CO2`:
+`Mnf Flow`:
+`Carb Pressure1`:
+`Fill Pressure`:
+`Hyd Pressure1`:
+`Hyd Pressure2`:
+`Hyd Pressure3`:
+`Hyd Pressure4`:
+`Filler Level`:
+`Filler Speed`:
+`Temperature`:
+`Usage cont`:
+`Carb Flow`:
+`Density`:
+`MFR`:
+`Balling`:
+`Pressure Vacuum`:
+`PH`: **TARGET to predict**
+`Bowl Setpoint`:
+`Pressure Setpoint`:
+`Air Pressurer`:
+`Alch Rel`:
+`Carb Rel`:
+`Balling Lvl`:
+
+### Summary Stats
+
+Lets run summary statistics on our dataset to uderstand better the data we are dealing with.
+
+```{r data_summary}
+
+# Run summary statistics
+skim(df)
+
+```
+
+
+There are numerous missing data--coded as NA--that will need to be imputed.
+Note that 4 rows are missing a `PH` value and will be dropped as they cannot be used for training.
+The basic histograms suggest that skewness is prevalent across features.
+Some of the skewed features appear to show near-zero variance, with a large number of 0 or even negative values, e.g. "Hyd Pressure1" and "Hyd Pressure2". 
+In general, the skewness and imbalance may require imputation.
+
+### Check Target Bias
+
+If our target, `PH` is particularly skewed, it could lead to biased predictions.
+
+```{r}
+# Check PH skewness
+hist(df$PH)
+
+```
+
+`PH` is normally distributed with possible outliers on the low and high ends. Given the normal shape, a regression or possible ensemble with regression and classification seems more appropriate.
+
+### Missing Data
+
+Here we review the patterns of missingness across predictor features.
+
+```{r echo=FALSE}
+# Identify missing data by Feature and display percent breakout
+missing <- colSums(df %>% sapply(is.na))
+missing_pct <- round(missing / nrow(df) * 100, 2)
+stack(sort(missing_pct, decreasing = TRUE))
+# Various NA plots to inspect data
+knitr::kable(miss_var_summary(df), 
+             caption = 'Missing Values',
+             format="html", 
+             table.attr="style='width:50%;'") %>% 
+  kableExtra::kable_styling()
+gg_miss_var(df)
+gg_miss_upset(df)
+```
+
+Notice that approximately 8.25 percent of the rows are missing a value for `MFR`. This will be dropped to avoid the potential negative consequences of imputation. 
+Additionally, the categorical feature `Brand Code` is missing approximately 4.67 percent of its values and will create a new feature category 'Unknown' consisting of missing values.
+
+### Distributions
+
+We visualize the distributions of each of the predictor features. This will help us assess relationships between features and with `PH`, and identify outliers as well as transformations that might improve model resolution.
+
+```{r, fig.height = 10, fig.width = 10, echo=FALSE}
+# Prepare data for ggplot
+gather_df <- df %>% 
+  drop_na() %>%
+  dplyr::select(-c(PH, `Brand Code`)) %>%
+  gather(key = 'variable', value = 'value')
+# Histogram plots of each variable
+ggplot(gather_df) + 
+  geom_histogram(aes(x=value, y = ..density..), bins=30) + 
+  geom_density(aes(x=value), color='blue') +
+  facet_wrap(. ~variable, scales='free', ncol=4)
+```
+
+The distribution profiles show the prevalence of kurtosis, specifically right skew in differenct variables.
+
+
+### Boxplots
+
+Lets use boxplots to understand the spread of each feature.
+
+```{r, fig.height = 10, fig.width = 10, echo=FALSE}
+# Prepare data for ggplot
+gather_df <- df %>% 
+  dplyr::select(-c(PH, `Brand Code`)) %>%
+  tidyr::drop_na() %>%
+  gather(key = 'variable', value = 'value')
+# Boxplots for each variable
+gather_df %>% ggplot() + 
+  geom_boxplot(aes(x=variable, y=value)) + 
+  facet_wrap(. ~variable, scales='free', ncol=6)
+```
+
+The boxplots reveal outliers, though none of them seem extreme enough to warrant imputing or removal.
+
+
+### Feature-Target Correlations
+
+We next quantify the relationships visualized above. In general, our model should focus on features showing stronger positive or negative correlations with `PH`. Features with correlations closer to zero will probably not provide any meaningful information on pH levels.
+
+```{r echo=FALSE}
+# Show feature correlations/target by decreasing correlation
+
+df_features <- df %>% 
+  dplyr::select(-c(PH, `Brand Code`))
+df_features$PH <- df$PH
+df_features <- df_features %>%
+  drop_na
+feature_count <- ncol(df_features) - 1
+
+stack(sort(cor(df_features[, feature_count + 1], df_features[,1:feature_count])[,], 
+           decreasing=TRUE))
+```
+
+It appears that `Bowl Setpoint`, `Filler Level`, `Carb Flow`, `Pressure Vacuum`, `Carb Rel`, `Alch Rel` and ` Oxygen Filler` have the highest correlations (positive) with `PH`, while `Mnf Flow`, `Usage cont`, `Fill Pressure`, `Pressure Setpoint`, `Hyd Pressure3`, and `Hyd Pressure2` have the strongest negative correlations with `PH`. 
+All others have a weak or slightly negative correlation, which implies they have less predictive power.
+
+### Multicollinearity
+
+Lets check for correlation between predictive features, or multicollinearity.
+
+```{r echo=FALSE, fig.height=8, fig.width=10}
+
+# Calculate and plot the Multicollinearity
+df_features <- df %>%
+  dplyr::select(-c(`Brand Code`))
+correlation = cor(df_features, use = 'pairwise.complete.obs')
+corrplot(correlation, 'ellipse', type = 'lower', order = 'hclust',
+         col=brewer.pal(n=8, name="RdYlBu"))
+
+```
+
+We can see that some variables are highly correlated with one another with a correlation between 0.75 and 1. 
+During our modeling is possible to avoid including pairs with strong correlations.
+
+### Near-Zero Variance
+
+Before we move to data preparation, lets check for any features that show near zero-variance. 
+This will be eliminated since they add little predictive information.
+
+```{r}
+
+# Near Zero Variance
+nzv <- nearZeroVar(df, saveMetrics= TRUE)
+nzv[nzv$nzv,][1:5,] %>% drop_na()
+
+```
+
+`Hyd Pressure1` will be dropped.
+
+
+## 2. Data Preparation
+
+What have we done so far.
+
+### Eliminated Fields/Variables
+
+   `MFR` has lots of missing values that exceed 8%.
+   `Hyd Pressure1` shows near zero variance.
+
+```{r}
+# Remove the fields from our training data
+df_clean <- df %>%
+  dplyr::select(-c(MFR, `Hyd Pressure1`))
+
+# remove the fields from our evaluation data
+df_eval_clean <- df_eval %>%
+  dplyr::select(-c(MFR, `Hyd Pressure1`))
+  
+```
+
+### Drop Missing Values
+
+   We need to drop 4 `PH`rows with missing values
+   Replace missing values for `Brand Code` with "Unknown"
+   Impute remaining missing values using `kNN()`
+
+```{r}
+set.seed(100)
+
+# drop rows with missing PH
+df_clean <- df_clean %>%
+  filter(!is.na(PH))
+
+# Change Brand Code missing to 'Unknown' in our training dataset
+brand_code <- df_clean %>%
+  dplyr::select(`Brand Code`) %>%
+  replace_na(list(`Brand Code` = 'Unknown'))
+df_clean$`Brand Code` <- brand_code$`Brand Code`
+
+# Change Brand Code missing to 'Unknown' in our evaluation dataset
+brand_code <- df_eval_clean %>%
+  dplyr::select(`Brand Code`) %>%
+  replace_na(list(`Brand Code` = 'Unknown'))
+df_eval_clean$`Brand Code` <- df_eval_clean$`Brand Code`
+
+# There is an edge case where our Eval data might have a `Brand Code` not seen in our training set
+# If so, let's convert them to 'Unknown'
+codes <- unique(df_clean$`Brand Code`)
+df_eval_clean <- df_eval_clean %>%
+  mutate(`Brand Code`  = if_else(`Brand Code` %in% codes, `Brand Code`, 'Unknown'))
+
+# Use the kNN imputing method to impute missing values
+df_clean <- df_clean %>% 
+  kNN(k=10) %>%
+  dplyr::select(colnames(df_clean))
+
+# Use the kNN imputing method from VIM package to impute missing values in our evaluation data
+df_eval_clean <- df_eval_clean %>% 
+  kNN(k=10) %>%
+  dplyr::select(colnames(df_eval_clean))
+
+```
+
+### Convert Categorical to Dummy
+
+`Brand Code` is a categorical variable with values A, B, C, D and Unknown. We convert it to a set of dummy columns for modeling.
+
+```{r message=FALSE, warning=FALSE}
+
+# Training data - Convert our `Brand Code` column into a set of dummy variables
+df_clean_dummy <- dummyVars(PH ~ `Brand Code`, data = df_clean)
+dummies <- predict(df_clean_dummy, df_clean)
+
+# Get the dummy column names
+dummy_cols <- sort(colnames(dummies))
+
+# Make sure the new dummy columns are sorted in alpha order (to make sure our columns will match the eval dataset)
+dummies <- as.tibble(dummies) %>%
+  dplyr::select(dummy_cols)
+
+# remove the original categorical feature
+df_clean <- df_clean %>%
+  dplyr::select(-`Brand Code`)
+
+# add the new dummy columns to our main training dataframe
+df_clean <- cbind(dummies, df_clean)
+
+# Evaluation data - Convert our `Brand Code` column into a set of dummy variables
+df_eval_clean$PH <- 1
+eval_dummies <- predict(df_clean_dummy, df_eval_clean)
+
+# If the eval dataset doesn't have a specific `Brand Code` lets add dummy columns with all 0's.
+for (c in dummy_cols) {
+  if (!(c %in% colnames(eval_dummies))) {
+    eval_dummies[c] <- 0
+  }
+}
+
+# Now sort the eval_dummy columns so they match the training set dummies
+eval_dummy_cols <- sort(colnames(eval_dummies))
+eval_dummies <- as.tibble(eval_dummies) %>%
+  dplyr::select(eval_dummy_cols)
+
+# remove the original categorical feature
+df_eval_clean <- df_eval_clean %>%
+  dplyr::select(-c(`Brand Code`, PH))
+
+# add the new dummy columns to our main eval dataframe
+df_eval_clean <- cbind(eval_dummies, df_eval_clean)
+
+```
+
+### Transform features with skewed distributions
+
+Lets apply the Box-Cox transformation to the skewed features using `preProcess` from `caret` to ensure we are using distributions that better approximate normal.
+
+```{r, echo=FALSE, fig.height=14, fig.width=8, message=FALSE, warning=FALSE}
+
+# Drop the target, PH, we don't want to transform our target,
+df_features <- df_clean %>%
+  dplyr::select(-c(PH))
+
+# Our evaluation (hold out data), note it didn't have the PH column
+df_eval_features <- df_eval_clean
+
+# Use caret pre-processing to handle scaling, norm'ing and BoxCox transforming our training data.
+preProcValues <- preProcess(
+  df_features, 
+  method = c("center", "scale", "BoxCox"))
+df_transformed <- predict(preProcValues, df_features)
+df_transformed$PH <- df_clean$PH
+
+# Do the same for the evaluation data set
+df_eval_transformed <- predict(preProcValues, df_eval_features)
+preProcValues
+
+```
+
+
+## 3. Build Models
+
+First, we split our cleaned dataset into training and testing sets (80% training, 20% testing). 
+This split is necessary because the provided evaluation data set does not provide `PH` values.
+
+```{r}
+
+training_set <- createDataPartition(df_transformed$PH, p=0.8, list=FALSE)
+df_transformed1 <- df_transformed %>% dplyr::select (-PH)
+X.train <- df_transformed1[training_set, ]
+y.train <- df_transformed$PH[training_set]
+X.test <- df_transformed1[-training_set, ]
+y.test <- df_transformed$PH[-training_set]
+
+
+dim(X.train)
+dim(X.test)
+```
+
+
+#### Model 1 - Support Vector Machine (SVM)
+
+Support Vector Machine (SVM) is a supervised machine learning algorithm which is mainly used to classify data into different classes.
+Unlike most algorithms, SVM makes use of a hyperplane which acts like a decision boundary between the various classes.
+SVM can be used to generate multiple separating hyperplanes such that the data is divided into segments and each segment contains only one kind of data.
+
+
+```{r}
+
+cl <- makePSOCKcluster(5)
+registerDoParallel(cl)
+set.seed(100)
+
+trctrl <- trainControl(method = "repeatedcv", number = 10, repeats = 3)
+
+svm_Linear <- train(x = X.train, y = y.train, method = "svmLinear",
+                    trControl=trctrl,
+                    preProcess = c("center", "scale"),
+                    tuneLength = 10)
+
+stopCluster(cl)
+
+svm_Linear$results #summary(svm_Linear)
+
+# Applying Model 1 against our Test Data:
+svm_pred <- predict(svm_Linear, newdata = X.test)
+test <- data.frame(cbind(svm_pred,y.test))
+colnames(test) <- c("test","actual")
+test <- test %>%
+  mutate(pe = abs(actual - test)/actual)
+
+MAPE <- (mean(test$pe))*100
+MAPE
+
+
+ggplot(test, aes(x = actual, y = test)) +
+  geom_line() +
+  geom_point()
+
+
+# Bind results to a table to compare performance of our two models
+results <- data.frame()
+results <- data.frame(t(postResample(pred = svm_pred, obs = y.test))) %>% mutate(Model = "Support Vector Machine (SVM)") %>% rbind(results)
+#results
+
+```
+
+
+
+#### Model 2 - Multivariate Adaptive Regression Splines (MARS)
+
+The approach used for the second model, Multivariate Adaptive Regression Splines (MARS), creates contrasting versions of each predictor to enter the model. These versions, features known as hinge functions, each represent an exclusive portion of the data. Such features are created iteratively for all model predictors, a process that is followed by "pruning" of individual features that do not contribute to the model.
+
+
+```{r MARS, warning=FALSE}
+
+options(max.print = 1e+06)
+
+cl <- makePSOCKcluster(5)
+registerDoParallel(cl)
+set.seed(100)
+
+mars_grid <- expand.grid(.degree = 1:2, .nprune = 2:15)
+mars_model <- train(x = X.train, y = y.train, method = "earth", 
+                    tuneGrid = mars_grid, 
+                    preProcess = c("center", "scale"), 
+                    tuneLength = 10)
+
+stopCluster(cl)
+
+summary(mars_model)
+
+# Applying Model 2 against our Test Data:
+mars_pred <- predict(mars_model, newdata = X.test)
+test <- data.frame(cbind(mars_pred, y.test))
+colnames(test) <- c("test","actual")
+test <- test %>%
+  mutate(pe = abs(actual - test)/actual)
+
+MAPE <- (mean(test$pe))*100
+MAPE
+
+ggplot(test, aes(x = actual, y = test)) +
+  geom_line() +
+  geom_point()
+
+
+# Bind results to a table to compare performance of our two models
+results <- data.frame(t(postResample(pred = mars_pred, obs = y.test))) %>% mutate(Model = "Multivariate Adaptive Regression Splines (MARS)") %>% rbind(results)
+results
+
+```
+
+
+
+### Model Summary
+
+We evaluate our two models using three criteria: root mean squared error (RMSE), R-squared, and mean absolute error. The table below lists these criteria for each model.
+
+```{r}
+
+results %>% dplyr::select(Model, RMSE, Rsquared, MAE)
+
+```
+
+## 4. Model Selection
+
+Based on evaluating both RMSE and $R^2$, MARS slightly outperformed SVM.
+
+
+```{r}
+varImp(mars_model)
+``` 
+
+## Predictions
+
+We apply **Model #2 (MARS)** to the holdout evaluation set to predict the targets. We have saved these predictions as csv in the file `eval_predicted.csv`.
+
+
+```{r, echo=F}
+
+predictions <- predict(mars_model, df_eval_transformed)
+df_eval$PH <- round(predictions, 2)
+write.csv(df_eval, 'eval_predicted.csv', row.names=F)
+
+```
+
