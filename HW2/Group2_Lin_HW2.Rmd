@@ -1,0 +1,119 @@
+---
+title: "Group2_HW2_Li"
+output: html_document
+---
+
+#### 6.3 
+A chemical manufacturing process for a pharmaceutical product was discussed in Sect.1.4. In this problem, the objective is to understand the relationship between biological measurements of the raw materials (predictors), measurements of the manufacturing process (predictors), and the response of product yield. Biological predictors cannot be changed but can be used to assess the quality of the raw material before processing. On the other hand, manufacturing process predictors can be changed in the manufacturing process. Improving product yield by 1% will boost revenue by approximately one hundred thousand dollars per batch:
+
+(a) Start R and use these commands to load the data:
+
+```{r}
+library(AppliedPredictiveModeling)
+data(ChemicalManufacturingProcess)
+```
+
+The matrix processPredictors contains the 57 predictors (12 describing the input biological material and 45 describing the process predictors) for the 176 manufacturing runs. yield contains the percent yield for each run.
+
+(b) A small percentage of cells in the predictor set contain missing values. Use an imputation function to fill in these missing values (e.g., see Sect. 3.8).
+
+```{r}
+# Get total number of missing values
+sum(is.na(ChemicalManufacturingProcess))
+```
+
+```{r}
+# Impute data with "knnImpute" method
+library(caret)
+library(RANN)
+Chem_impute <- preProcess(ChemicalManufacturingProcess, method = "knnImpute")
+impute_Result <- predict(Chem_impute, ChemicalManufacturingProcess)
+sum(is.na(impute_Result))
+```
+
+
+(c) Split the data into a training and a test set, pre-process the data, and tune a model of your choice from this chapter. What is the optimal value of the performance metric?
+
+```{r}
+# Box–Cox transform and scale 
+trans <- preProcess(impute_Result, method = c("BoxCox", "scale"))
+```
+
+```{r}
+transformed <- predict(trans, impute_Result)
+```
+
+```{r}
+# Split data into 75 % training and 25 % testing sets
+set.seed(1)
+n <- nrow(transformed)
+trainIndex <- sample(1:n, size = round(0.75*n), replace=FALSE)
+train <- transformed[trainIndex ,]
+test <- transformed[-trainIndex ,]
+
+x <- train[, -1]
+y <- train[, 1]
+
+set.seed(100)
+plsTune <- train(x, y, 
+                 method = "pls",
+                 tuneLength = 20,
+                 trControl = trainControl(method = "cv", number = 10))
+plsTune
+```
+
+```{r}
+plsTunePred <- predict(plsTune, test)
+```
+
+(d) Predict the response for the test set. What is the value of the performance metric and how does this compare with the resampled performance metricon the training set?
+
+```{r}
+library(pls)
+plsFit <- plsr(Yield ~., data = train)
+plsPred <- predict(plsFit, test)
+```
+
+(e) Which predictors are most important in the model you have trained? Do either the biological or process predictors dominate the list?
+
+```{r}
+library(mlbench)
+
+# Rank variables by importance
+importance <- varImp(plsTune, scale = FALSE)
+print(importance)
+```
+
+The first six most important predictors are dominated by manufacturing processes. The number of biological and process predictors are similar for the top 20 most important predictors. 
+
+(f) Explore the relationships between each of the top predictors and the response. How could this information be helpful in improving yield in future runs of the manufacturing process?
+
+```{r}
+par(mfrow=c(2,3))
+plot(ChemicalManufacturingProcess$ManufacturingProcess32, ChemicalManufacturingProcess$Yield, xlab = "Process32", ylab = "Yield")
+plot(ChemicalManufacturingProcess$ManufacturingProcess13, ChemicalManufacturingProcess$Yield, xlab = "Process13", ylab = "Yield")
+plot(ChemicalManufacturingProcess$ManufacturingProcess09, ChemicalManufacturingProcess$Yield, xlab = "Process09", ylab = "Yield")
+plot(ChemicalManufacturingProcess$ManufacturingProcess17, ChemicalManufacturingProcess$Yield, lxab = "Process17", ylab = "Yield")
+plot(ChemicalManufacturingProcess$ManufacturingProcess06, ChemicalManufacturingProcess$Yield,xlab = "Process06", ylab = "Yield")
+plot(ChemicalManufacturingProcess$BiologicalMaterial03, ChemicalManufacturingProcess$Yield,xlab = "Biological03", ylab = "Yield")
+```
+The plots suggest that the most important variables are either positively or negatively correlated to Yield. Since the manufacturing predictors are the most important, removing/modifying the ones that have negative correlations with Yield can improve the yield production.
+
+
+#### 8.3
+In stochastic gradient boosting the bagging fraction and learning rate will govern the construction of the trees as they are guided by the gradi- ent. Although the optimal values of these parameters should be obtained through the tuning process, it is helpful to understand how the magnitudes of these parameters affect magnitudes of variable importance. Figure 8.24 provides the variable importance plots for boosting using two extreme values for the bagging fraction (0.1 and 0.9) and the learning rate (0.1 and 0.9) for the solubility data. The left-hand plot has both parameters set to 0.1, and the right-hand plot has both set to 0.9:
+
+(a) Why does the model on the right focus its importance on just the first few of predictors, whereas the model on the left spreads importance across more predictors?
+
+Bagging, short for bootstrap aggregation, is an ensemble technique that combines the predictions from multiple algorithms to make more accurate predictions than any individual model. Bagging is used to reduce variance of a decision tree. 
+
+Model on the right has both the bagging fraction and learning rate set at a higher value (0.9) compared to the model on the left (0.1). High learning rate typically results in overfit models and poor performance. High bagging fraction means a larger subset of the predictor variables are selected and the few very important predictors will stand out.
+
+(b) Which model do you think would be more predictive of other samples?
+
+The left model with slow learning rate should be able to better predict the new data. The model with high learning rate can cause the model to converge to a suboptimal solution too quickly and result in overfitting.  
+
+(c) How would increasing interaction depth affect the slope of predictor importance for either model in Fig. 8.24?
+
+Interaction depth controls the number of splits and the number of terminal nodes. In maximum depth, each tree contributes equally to the final model with the highest level of variable interactions. Increasing the depth will increase the spread of important variables, thus decreasing the slope.
+
