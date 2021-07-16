@@ -1,0 +1,1607 @@
+---
+title: "Other Models"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+This section includes the other models we have built in addition to the Random Forest model highlighted in the report.
+
+#### KNN
+---
+title: "KNN"
+author: "David Moste"
+date: "7/7/2021"
+output: word_document
+---
+# Pre-Process
+
+Let's start by bringing in the data and getting a sense of what's there.
+
+```{r}
+data <- read.csv("https://raw.githubusercontent.com/dmoste/DATA624/main/Project2/StudentDataTOMODEL.csv")
+
+summary(data)
+
+cc <- complete.cases(data)
+(length(cc[cc == TRUE])/length(cc))*100
+
+missing_data <- sapply(data, function(x) sum(is.na(x)))
+missing_data <- data.frame(missing_data)
+(sum(missing_data)/(2571*33))*100
+
+unique(data[,1])
+length(data[data[,1] == "",])
+```
+
+Clearly there is some missing data, so that needs to be dealt with first. Since only 0.85% of the data is missing and 83% of the rows are complete, I think there is enough full data that I can just fill in missing values with the mean for each predictor. To do this, I first have to map the Brand.Code predictor into numerical values since I noticed it had some missing values coded as "".
+
+```{r}
+library(plyr)
+data[,1] <- mapvalues(data[,1],
+                      from = c("A","B","C","D",""),
+                      to = c(1,2,3,4,NA))
+data[,1] <- as.integer(data[,1])
+
+# Removing the response variable since I don't want to impute or transform these values
+drops <- c("PH")
+features <- data[,!(names(data) %in% drops)]
+
+na_to_mean <- function(x) replace(x, is.na(x), mean(x, na.rm = TRUE))
+features[] <- lapply(features, na_to_mean)
+```
+
+Now I'm going to work on getting some sort of visualization of the data.
+
+```{r}
+library(ggplot2)
+library(tidyverse)
+
+vis_features <- features %>%
+  gather(key = "variable", value = "value")
+
+ggplot(data = vis_features, aes(x = value)) +
+  geom_bar() +
+  facet_wrap(variable ~ ., scales = "free")
+```
+
+KNN is HIGHLY sensitive to the scale of predictors, so I'm going to go ahead and center and scale the predictors before building a model. I'm also going to use a BoxCox transformation to fix any skewed data as much as possible (some of this data is pretty wacky).
+
+```{r}
+library(caret)
+
+trans <- preProcess(features,
+                    method = c("BoxCox", "center", "scale"))
+transformed_feat <- predict(trans, features)
+```
+
+Next I'm going to check the variance of each predictor variable and remove anything with near zero variance.
+
+```{r}
+library(caret)
+
+nzv <- nearZeroVar(transformed_feat, saveMetrics = TRUE)
+nzv[nzv[,"nzv"] == TRUE,]
+
+# Removing Hy.Pressure1 since it has near zero variance
+drops <- c("Hyd.Pressure1")
+transformed_feat <- transformed_feat[,!(names(transformed_feat) %in% drops)]
+```
+
+Let's add the pH data back into these features and remove any rows that contain NAs (this data isn't usable since we have no idea what the response variable is).
+
+```{r}
+processed <- cbind(data[,26], transformed_feat)
+names(processed)[1] <- ("PH")
+
+# Checking if any of the pH data is missing
+summary(processed$PH)
+
+processed <- processed[complete.cases(processed),]
+```
+
+# Split Data and Train Model
+
+At this point, I have my features worked the way I want (I think), so I'm going to split the data into a train and test set.
+
+```{r}
+set.seed(12345)
+train_ind <- sample(seq_len(nrow(processed)),
+                    size = floor(0.75*nrow(processed)))
+
+train <- processed[train_ind,]
+test <- processed[-train_ind,]
+```
+
+Let's go ahead and build a model with the training data!
+
+```{r}
+library(caret)
+library(ggplot2)
+library(tidyverse)
+
+#### train from caret ####
+knnModel <- train(train[,-1],
+                 train[,1],
+                 method = "knn",
+                 tuneGrid = data.frame(.k = 1:20),
+                 trControl = trainControl(method = "cv"))
+
+ggplot(data = knnModel$results, aes(x = k, y = RMSE)) +
+  geom_line() +
+  geom_point()
+
+# Check best model
+knnPred <- predict(knnModel, newdata = test[,-1])
+
+caret_test <- data.frame(cbind(knnPred,test[,1]))
+colnames(caret_test) <- c("caret","actual")
+caret_test <- caret_test %>%
+  mutate(pe = abs(actual - caret)/actual)
+
+MAPE <- (mean(caret_test$pe))*100
+MAPE
+
+ggplot(caret_test, aes(x = actual, y = caret)) +
+  geom_line() +
+  geom_point()
+```
+
+The caret package knn regression function found a minimum MAPE of 1.18% with a k value of 6.
+
+Let's see if I can do better with a different package and more control. Trying to model again with the knn.reg function from the FNN package. This package seems interesting because it allows you to change the algorithm, which is a good check on the data size.
+
+```{r}
+library(FNN)
+library(ggplot2)
+
+fnn_func <- function(train_x, train_y, test_x, test_y){
+  mape_df <- data.frame(matrix(nrow = 0, ncol = 3))
+  
+  for(x in c("kd_tree","cover_tree","brute")){
+    for(i in 1:20){
+      knn_fnn <- knn.reg(train = train_x,
+                         test = test_x,
+                         y = train_y,
+                         k = i,
+                         algorithm = x)
+      
+      mape <- mean(abs(test_y - knn_fnn$pred)/test_y)*100
+      mape_df <- rbind(mape_df,c(i,mape,x))
+    }
+  }
+  colnames(mape_df) <- c("k", "MAPE","Type")
+  mape_df[,1] <- as.integer(mape_df[,1])
+  mape_df[,2] <- as.numeric(mape_df[,2])
+  return(mape_df)
+}
+
+fnn_mape <- fnn_func(train[,-1], train[,1], test[,-1], test[,1])
+
+ggplot(data = fnn_mape, aes(x = k, y = MAPE, color = Type)) +
+  geom_line() +
+  geom_point()
+
+# Check best model
+fnn_fit <- knn.reg(train = train[,-1],
+                   test = test[,-1],
+                   y = train[,1],
+                   k = 6,
+                   algorithm = "brute")
+
+fnn_test <- data.frame(cbind(fnn_fit$pred,test[,1]))
+colnames(fnn_test) <- c("fnn","actual")
+
+ggplot(fnn_test, aes(x = actual, y = fnn)) +
+  geom_line() +
+  geom_point()
+```
+
+The FNN knn regression gave a minimum MAPE of 1.18% with a k value of 6.This is the same as the caret package model. It seems there are no differences in any of the algorithms within this package, which would indicate that the dataset is rather small. Since there is no decrease in performance for either kd_tree or cover_tree compared to brute, the data is small enough to compute with just the brute method.
+
+I figured I'd try one more package. This time I'm using the kknn package which allows for weighting the nearest neighbors.
+
+```{r}
+library(kknn)
+library(ggplot2)
+
+kknn_func <- function(train_x, train_y, test_x, test_y){
+  mape_df <- data.frame(matrix(nrow = 0, ncol = 3))
+  
+  types <- c("rectangular","triangular",
+             "biweight","triweight",
+             "epanechnikov","optimal")
+  
+  for(x in types){
+    for(i in 2:30){
+      ph_kknn <- kknn(train_y ~ .,
+                      train_x,
+                      test_x,
+                      k = i,
+                      distance = 1,
+                      kernel = x)
+      
+      mape <- mean(abs(test_y - ph_kknn$fitted.values)/test_y)*100
+      mape_df <- rbind(mape_df,c(i,mape,x))
+    }
+  }
+  colnames(mape_df) <- c("k", "MAPE","Type")
+  mape_df[,1] <- as.integer(mape_df[,1])
+  mape_df[,2] <- as.numeric(mape_df[,2])
+  return(mape_df)
+}
+
+kknn_mape <- kknn_func(train[,-1], train[,1], test[,-1], test[,1])
+
+ggplot(data = kknn_mape, aes(x = k, y = MAPE, color = Type)) +
+  geom_line() +
+  geom_point()
+
+# Check best model
+kknn_fit <- kknn(train[,1] ~ .,
+                 train[,-1],
+                 test[,-1],
+                 k = 18,
+                 distance = 1,
+                 kernel = "triweight")
+
+kknn_test <- data.frame(cbind(kknn_fit$fitted.values,test[,1]))
+colnames(kknn_test) <- c("kknn","actual")
+
+ggplot(kknn_test, aes(x = actual, y = kknn)) +
+  geom_line() +
+  geom_point()
+```
+
+This model found a minimum MAPE of 0.958% for a triweight kernel at a distance of 1 (Manhattan distance) with a k value of 18. This is definitely the best MAPE I've achieved so far, so I think I'm gonna stick with this model.
+
+The question I have is whether to use a triweight model with k = 18 or a biweight model with k = 12, which is only 0.1% worse (according to MAPE scores). The triweight model seems more complicated to me, though I'm not sure if it really is.
+
+# Hone the top model
+
+I'm going to resample my data and create a new model using the kknn package (my favorite) and see which model is the best this time. Hopefully, this will provide some insight on what to chosoe for my predictions. I'm going to narrow it down to just biweight and triweight this time.
+
+```{r}
+library(kknn)
+library(ggplot2)
+
+# Re-sample the data
+set.seed(54321)
+train_ind2 <- sample(seq_len(nrow(processed)),
+                    size = floor(0.75*nrow(processed)))
+
+train2 <- processed[train_ind2,]
+test2 <- processed[-train_ind2,]
+
+# Try out the kknn models again with the new train and test sets
+kknn_func <- function(train_x, train_y, test_x, test_y){
+  mape_df <- data.frame(matrix(nrow = 0, ncol = 3))
+  
+  types <- c("biweight","triweight")
+  
+  for(x in types){
+    for(i in 2:30){
+      ph_kknn <- kknn(train_y ~ .,
+                      train_x,
+                      test_x,
+                      k = i,
+                      distance = 1,
+                      kernel = x)
+      
+      mape <- mean(abs(test_y - ph_kknn$fitted.values)/test_y)*100
+      mape_df <- rbind(mape_df,c(i,mape,x))
+    }
+  }
+  colnames(mape_df) <- c("k", "MAPE","Type")
+  mape_df[,1] <- as.integer(mape_df[,1])
+  mape_df[,2] <- as.numeric(mape_df[,2])
+  return(mape_df)
+}
+
+kknn_mape <- kknn_func(train2[,-1], train2[,1], test2[,-1], test2[,1])
+
+ggplot(data = kknn_mape, aes(x = k, y = MAPE, color = Type)) +
+  geom_line() +
+  geom_point()
+```
+
+This time, triweight was still the winner, but with a k value of 9 (and a MAPE of 0.85%). This has me leaning towards a triweight kernel, but I still need to decide on a k value. Let's try re-sampling many times on just a triweight kernel.
+
+```{r}
+library(kknn)
+library(ggplot2)
+
+# Changing the kkhn function to accept seed values and only run a triweight model on Manhattan distance
+kknn_func <- function(train_x, train_y, test_x, test_y, seed){
+  mape_df <- data.frame(matrix(nrow = 0, ncol = 4))
+  
+  for(i in 2:30){
+    ph_kknn <- kknn(train_y ~ .,
+                    train_x,
+                    test_x,
+                    k = i,
+                    distance = 1,
+                    kernel = "triweight")
+    
+    mape <- mean(abs(test_y - ph_kknn$fitted.values)/test_y)*100
+    rmse <- sqrt(mean((test_y - ph_kknn$fitted.values)^2))
+    mape_df <- rbind(mape_df,c(i,mape,rmse,seed))
+    
+    colnames(mape_df) <- c("k", "MAPE", "RMSE", "Seed")
+    mape_df[,1] <- as.integer(mape_df[,1])
+    mape_df[,2] <- as.numeric(mape_df[,2])
+    mape_df[,3] <- as.numeric(mape_df[,3])
+    mape_df[,4] <- as.factor(mape_df[,4])
+  }
+  return(mape_df)
+}
+
+# Re-sample the data with 7 different test/train sets
+kknn_mape <- data.frame(matrix(nrow = 0, ncol = 4))
+seeds <- c(1234567,2345671,3456712,4567123,5671234,6712345,7123456)
+
+for(i in seeds){
+  print(i)
+  
+  set.seed(i)
+  train_ind3 <- sample(seq_len(nrow(processed)),
+                      size = floor(0.75*nrow(processed)))
+  
+  train3 <- processed[train_ind3,]
+  test3 <- processed[-train_ind3,]
+  
+  current_mape <- kknn_func(train3[,-1],
+                            train3[,1],
+                            test3[,-1],
+                            test3[,1],
+                            i)
+  kknn_mape <- rbind(kknn_mape, current_mape)
+}
+
+colnames(kknn_mape) <- c("k", "MAPE", "RMSE", "Seed")
+kknn_mape[,1] <- as.integer(kknn_mape[,1])
+kknn_mape[,2] <- as.numeric(kknn_mape[,2])
+kknn_mape[,3] <- as.numeric(kknn_mape[,3])
+kknn_mape[,4] <- as.factor(kknn_mape[,4])
+
+ggplot(data = kknn_mape, aes(x = k, y = MAPE, color = Seed)) +
+  geom_line() +
+  geom_point()
+
+ggplot(data = kknn_mape, aes(x = k, y = RMSE, color = Seed)) +
+  geom_line() +
+  geom_point()
+
+# Check which value of k performs the best on average
+mape_mean <- aggregate(kknn_mape[,2], list(kknn_mape$k), mean)
+mape_sd <- aggregate(kknn_mape[,2], list(kknn_mape$k), sd)
+mape_data <- cbind(mape_mean, mape_sd[,2]) %>%
+  mutate(LB = x - mape_sd[,2], UB = x + mape_sd[,2])
+colnames(mape_data) <- c("k", "MAPE", "SD", "LB", "UB")
+
+# Visualize the aggregate data
+ggplot(data = mape_data, aes(x = k, y = MAPE)) +
+  geom_line() +
+  geom_ribbon(aes(ymin = LB, ymax = UB), alpha = 0.2)
+```
+
+It looks like the best values for MAPE are all really close. K values between 17 and 20 all produce a MAPE of approximately 0.905%, with k = 18 being the best value by the slimmest of margins.
+
+# Make Predictions
+
+Finally, lets bring in the data we need to predict and go for it! I'll apply all the same methods to the prediction data and see what happens :)
+
+```{r}
+library(plyr)
+library(caret)
+library(kknn)
+
+# Read in the data
+predict_df <- read.csv("https://raw.githubusercontent.com/dmoste/DATA624/main/Project2/StudentEvaluationTOPREDICT.csv")
+
+# Check for missing data
+missing_data <- sapply(predict_df, function(x) sum(is.na(x)))
+missing_data <- data.frame(missing_data)
+
+# Remove PH and Hyd.Pressure1 from the features data
+drops <- c("PH", "Hyd.Pressure1")
+predict_features <- predict_df[,!(names(predict_df) %in% drops)]
+
+# Map Brand.Code values to numerical options
+predict_features[,1] <- mapvalues(predict_features[,1],
+                                  from = c("A","B","C","D",""),
+                                  to = c(1,2,3,4,NA))
+predict_features[,1] <- as.integer(predict_features[,1])
+
+# Replace missing values with the mean of the predictor
+na_to_mean <- function(x) replace(x, is.na(x), mean(x, na.rm = TRUE))
+predict_features[] <- lapply(predict_features, na_to_mean)
+
+# Apply BoxCox transformations, center the data, and scale it
+trans <- preProcess(predict_features,
+                    method = c("BoxCox", "center", "scale"))
+transformed_feat <- predict(trans, predict_features)
+
+# Recombine the PH response with the transformed features
+predict_df <- cbind(predict_df[,26], transformed_feat)
+names(predict_df)[1] <- ("PH")
+
+# Train and predict using the model decided from the modeling data
+kknn_fit <- kknn(train[,1] ~ .,
+                train[,-1],
+                predict_df[,-1],
+                k = 18,
+                distance = 1,
+                kernel = "triweight")
+
+predictions <- data.frame(kknn_fit$fitted.values)
+```
+
+
+### SVM
+---
+title: "Kigamba"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+---
+title: "DATA624 Project2"
+author: "Samuel I Kigamba"
+date: "July 10, 2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r paged.print=TRUE,  include=FALSE}
+library(readxl)
+library(skimr)
+library(naniar)
+library(VIM)
+library(MASS)
+library(forecast)
+library(mixtools)
+library(caret)
+library(parallel)
+library(mlbench)
+library(rpart.plot)
+library(ggplot2)
+library(ggfortify)
+library(gridExtra)
+library(ggcorrplot)
+library(corrplot)
+library(RColorBrewer)
+library(fpp2)
+library(fma)
+library(kableExtra)
+library(e1071)
+library(timeDate)
+library(tidyverse)
+library(dplyr)
+library(tidyr)
+library(reshape2)
+library(tibble)
+library(doParallel)
+
+```
+
+
+## Instructions
+
+### Overview - Project #2 - Requirements
+You are given a simple data set from a beverage manufacturing company.  It consists of 2,571 rows/cases of data and 33 columns / variables. Your goal is to use this data to predict PH (a column in the set).  Potential for hydrogen (pH) is a measure of acidity/alkalinity, it must conform in a critical range and therefore it is important to understand its influence and predict its values.   This is production data.  pH is a KPI, Key Performance Indicator. 
+
+You are also given a scoring set (267 cases).  All variables other than the dependent or target.  You will use this data to score your model with your best predictions. 
+
+
+### Deliverables
+
+You are to submit a professional, easy to read report.  The consumers of this report are executives, data scientists and engineers.  You need to communicate to all audiences; therefore you cannot just present a technical report.  You should provide commentary on your approach, why you are taking this approach and your findings along the way.  The report should be very easy to navigate, follow and understand.  You must explain what/how/why. And submit your scored results.   Your representative will submit the materials to me in an email with a minimal of two attachments - A Word readable doc (Report), An Excel readable doc (my XLS to you with the predictions), all as before.  An R Markdown file is appreciated, but not required.  I will need your code either in the Word document or the markdown so I can reproduce results.  Please include all libraries you are using - all code from A to Z and the code should be well documented as if you are passing off to a production engineer.  
+
+Note the modeling/scoring in this exercise is not really that difficult, you can differentiate your team in your report.
+
+
+## Introduction
+
+Our team's analysis seeks to build understanding of the ABC Beverage manufacturing process and the related factors that affect the pH of the company's beverage products. Our goal is to build a model that both predicts product PH, given manufacturing steps and identify which steps appear to have the most impact on pH.
+
+We will start by understanding the dataset.  Specifically are the any missing data, outliers or odd feature distributions that might complicate modeling.
+We will then do any necessary data cleaning, split our data into training and testing set so we can more accurately determine model performance on out-of-set data samples.  
+We will preform a number of different machine learning approaches, touching on different broad prediction approaches including: Support VEctor Machines (SVM) and Multivariate Adaptive Regression We will then choose the model that performs best and use that to predict final pH on a holdout evaluation dataset.
+
+Note - we are doing an observational study so any correlations we identify would need to be followed up with testing to identify causal relationships.
+
+## 1. Data Exploration
+
+### Dataset
+
+The training data set contains 32 categorical, continuous, or discrete features and 2571 rows, with 267 rows reserved for an evaluation set that lacks the target. 
+The target is `PH`, which should be a continuous variable but has 52 distinct values in the training set. 
+As a result, possible predictive models could include regression, classification, or an ensemble of both.
+
+There are two files provided:
+
+-   **StudentData.xlsx** - The data set we use to train our model. It contains `PH`, the feature we seek to predict.
+-   **StudentEvaluation.xlsx** - The data set we use to evaluate our model. It lacks `PH`. Our model will have to be scored by an outside group with knowledge of the actual pH values.
+
+
+```{r load_data}
+
+# Load beverages data set into a dataframe
+#df <- read_excel('C:/Users/wb508205/OneDrive - WBG/Documents/QSA/DATA Science CUNY/DATA 624 Predictive Analytics/HW2 & Project 2/StudentDataTOMODEL.xlsx')
+#df_eval <- read_excel('C:/Users/wb508205/OneDrive - WBG/Documents/QSA/DATA Science CUNY/DATA 624 Predictive Analytics/HW2 & Project 2/StudentEvaluationTOPREDICT.xlsx')
+
+df = read.csv("https://raw.githubusercontent.com/dmoste/DATA624/main/Project2/StudentDataTOMODEL.csv", header = TRUE)
+df_eval = read.csv("https://raw.githubusercontent.com/dmoste/DATA624/main/Project2/StudentEvaluationTOPREDICT.csv", header = TRUE)
+
+# Exclude the empty PH column from the evaluation dataset
+df_eval <- df_eval %>%
+  dplyr::select(-PH)
+
+```
+
+Below is a list of the variables of interest in the data set:
+
+`Brand.Code`: categorical, values: A, B, C, D
+`Carb.Volume`:
+`Fill.Ounces`:
+`PC.Volume`:
+`Carb.Pressure`:
+`Carb.Temp`:
+`PSC`:
+`PSC.Fill`:
+`PSC.CO2`:
+`Mnf.Flow`:
+`Carb.Pressure1`:
+`Fill.Pressure`:
+`Hyd.Pressure1`:
+`Hyd.Pressure2`:
+`Hyd.Pressure3`:
+`Hyd.Pressure4`:
+`Filler.Level`:
+`Filler.Speed`:
+`Temperature`:
+`Usage.cont`:
+`Carb.Flow`:
+`Density`:
+`MFR`:
+`Balling`:
+`Pressure.Vacuum`:
+`PH`: **TARGET to predict**
+`Bowl.Setpoint`:
+`Pressure.Setpoint`:
+`Air.Pressurer`:
+`Alch.Rel`:
+`Carb.Rel`:
+`Balling.Lvl`:
+
+### Summary Stats
+
+Lets run summary statistics on our dataset to uderstand better the data we are dealing with.
+
+```{r data_summary}
+
+# Run summary statistics
+skim(df)
+
+```
+
+
+There are numerous missing data--coded as NA--that will need to be imputed.
+Note that 4 rows are missing a `PH` value and will be dropped as they cannot be used for training.
+The basic histograms suggest that skewness is prevalent across features.
+Some of the skewed features appear to show near-zero variance, with a large number of 0 or even negative values, e.g. "Hyd.Pressure1" and "Hyd.Pressure2". 
+In general, the skewness and imbalance may require imputation.
+
+### Check Target Bias
+
+If our target, `PH` is particularly skewed, it could lead to biased predictions.
+
+```{r}
+# Check PH skewness
+hist(df$PH)
+
+```
+
+`PH` is normally distributed with possible outliers on the low and high ends. Given the normal shape, a regression or possible ensemble with regression and classification seems more appropriate.
+
+### Missing Data
+
+Here we review the patterns of missingness across predictor features.
+
+```{r echo=FALSE}
+# Identify missing data by Feature and display percent breakout
+missing <- colSums(df %>% sapply(is.na))
+missing_pct <- round(missing / nrow(df) * 100, 2)
+stack(sort(missing_pct, decreasing = TRUE))
+# Various NA plots to inspect data
+knitr::kable(miss_var_summary(df), 
+             caption = 'Missing Values',
+             format="html", 
+             table.attr="style='width:50%;'") %>% 
+  kableExtra::kable_styling()
+gg_miss_var(df)
+gg_miss_upset(df)
+```
+
+Notice that approximately 8.25 percent of the rows are missing a value for `MFR`. This will be dropped to avoid the potential negative consequences of imputation. 
+Additionally, the categorical feature `Brand.Code` is missing approximately 4.67 percent of its values and will create a new feature category 'Unknown' consisting of missing values.
+
+### Distributions
+
+We visualize the distributions of each of the predictor features. This will help us assess relationships between features and with `PH`, and identify outliers as well as transformations that might improve model resolution.
+
+```{r, fig.height = 10, fig.width = 10, echo=FALSE}
+# Prepare data for ggplot
+gather_df <- df %>% 
+  drop_na() %>%
+  dplyr::select(-c(PH, `Brand.Code`)) %>%
+  gather(key = 'variable', value = 'value')
+# Histogram plots of each variable
+ggplot(gather_df) + 
+  geom_histogram(aes(x=value, y = ..density..), bins=30) + 
+  geom_density(aes(x=value), color='blue') +
+  facet_wrap(. ~variable, scales='free', ncol=4)
+```
+
+The distribution profiles show the prevalence of kurtosis, specifically right skew in differenct variables.
+
+
+### Boxplots
+
+Lets use boxplots to understand the spread of each feature.
+
+```{r, fig.height = 10, fig.width = 10, echo=FALSE}
+# Prepare data for ggplot
+gather_df <- df %>% 
+  dplyr::select(-c(PH, `Brand.Code`)) %>%
+  tidyr::drop_na() %>%
+  gather(key = 'variable', value = 'value')
+# Boxplots for each variable
+gather_df %>% ggplot() + 
+  geom_boxplot(aes(x=variable, y=value)) + 
+  facet_wrap(. ~variable, scales='free', ncol=6)
+```
+
+The boxplots reveal outliers, though none of them seem extreme enough to warrant imputing or removal.
+
+
+### Feature-Target Correlations
+
+We next quantify the relationships visualized above. In general, our model should focus on features showing stronger positive or negative correlations with `PH`. Features with correlations closer to zero will probably not provide any meaningful information on pH levels.
+
+```{r echo=FALSE}
+# Show feature correlations/target by decreasing correlation
+
+df_features <- df %>% 
+  dplyr::select(-c(PH, `Brand.Code`))
+df_features$PH <- df$PH
+df_features <- df_features %>%
+  drop_na
+feature_count <- ncol(df_features) - 1
+
+stack(sort(cor(df_features[, feature_count + 1], df_features[,1:feature_count])[,], 
+           decreasing=TRUE))
+```
+
+It appears that `Bowl.Setpoint`, `Filler.Level`, `Carb.Flow`, `Pressure.Vacuum`, `Carb.Rel`, `Alch.Rel` and ` Oxygen.Filler` have the highest correlations (positive) with `PH`, while `Mnf.Flow`, `Usage.cont`, `Fill.Pressure`, `Pressure.Setpoint`, `Hyd.Pressure3`, and `Hyd.Pressure2` have the strongest negative correlations with `PH`. 
+All others have a weak or slightly negative correlation, which implies they have less predictive power.
+
+### Multicollinearity
+
+Lets check for correlation between predictive features, or multicollinearity.
+
+```{r echo=FALSE, fig.height=8, fig.width=10}
+
+# Calculate and plot the Multicollinearity
+df_features <- df %>%
+  dplyr::select(-c(`Brand.Code`))
+correlation = cor(df_features, use = 'pairwise.complete.obs')
+corrplot(correlation, 'ellipse', type = 'lower', order = 'hclust',
+         col=brewer.pal(n=8, name="RdYlBu"))
+
+```
+
+We can see that some variables are highly correlated with one another with a correlation between 0.75 and 1. 
+During our modeling is possible to avoid including pairs with strong correlations.
+
+### Near-Zero Variance
+
+Before we move to data preparation, lets check for any features that show near zero-variance. 
+This will be eliminated since they add little predictive information.
+
+```{r}
+
+# Near Zero Variance
+nzv <- nearZeroVar(df, saveMetrics= TRUE)
+nzv[nzv$nzv,][1:5,] %>% drop_na()
+
+```
+
+`Hyd.Pressure1` will be dropped.
+
+
+## 2. Data Preparation
+
+What have we done so far.
+
+### Eliminated Fields/Variables
+
+   `MFR` has lots of missing values that exceed 8%.
+   `Hyd.Pressure1` shows near zero variance.
+
+```{r}
+# Remove the fields from our training data
+df_clean <- df %>%
+  dplyr::select(-c(MFR, `Hyd.Pressure1`))
+
+# remove the fields from our evaluation data
+df_eval_clean <- df_eval %>%
+  dplyr::select(-c(MFR, `Hyd.Pressure1`))
+  
+```
+
+### Drop Missing Values
+
+   We need to drop 4 `PH`rows with missing values
+   Replace missing values for `Brand.Code` with "Unknown"
+   Impute remaining missing values using `kNN()`
+
+```{r}
+set.seed(100)
+
+# drop rows with missing PH
+df_clean <- df_clean %>%
+  filter(!is.na(PH))
+
+# Change Brand.Code missing to 'Unknown' in our training dataset
+brand_code <- df_clean %>%
+  dplyr::select(`Brand.Code`) %>%
+  replace_na(list(`Brand.Code` = 'Unknown'))
+df_clean$`Brand.Code` <- brand_code$`Brand.Code`
+
+# Change Brand.Code missing to 'Unknown' in our evaluation dataset
+brand_code <- df_eval_clean %>%
+  dplyr::select(`Brand.Code`) %>%
+  replace_na(list(`Brand.Code` = 'Unknown'))
+df_eval_clean$`Brand.Code` <- df_eval_clean$`Brand.Code`
+
+# There is an edge case where our Eval data might have a `Brand.Code` not seen in our training set
+# If so, let's convert them to 'Unknown'
+codes <- unique(df_clean$`Brand.Code`)
+df_eval_clean <- df_eval_clean %>%
+  mutate(`Brand.Code`  = if_else(`Brand.Code` %in% codes, `Brand.Code`, 'Unknown'))
+
+# Use the kNN imputing method to impute missing values
+df_clean <- df_clean %>% 
+  kNN(k=10) %>%
+  dplyr::select(colnames(df_clean))
+
+# Use the kNN imputing method from VIM package to impute missing values in our evaluation data
+df_eval_clean <- df_eval_clean %>% 
+  kNN(k=10) %>%
+  dplyr::select(colnames(df_eval_clean))
+
+```
+
+### Convert Categorical to Dummy
+
+`Brand.Code` is a categorical variable with values A, B, C, D and Unknown. We convert it to a set of dummy columns for modeling.
+
+```{r message=FALSE, warning=FALSE}
+
+# Training data - Convert our `Brand.Code` column into a set of dummy variables
+df_clean_dummy <- dummyVars(PH ~ `Brand.Code`, data = df_clean)
+dummies <- predict(df_clean_dummy, df_clean)
+
+# Get the dummy column names
+dummy_cols <- sort(colnames(dummies))
+
+# Make sure the new dummy columns are sorted in alpha order (to make sure our columns will match the eval dataset)
+dummies <- as.tibble(dummies) %>%
+  dplyr::select(dummy_cols)
+
+# remove the original categorical feature
+df_clean <- df_clean %>%
+  dplyr::select(-`Brand.Code`)
+
+# add the new dummy columns to our main training dataframe
+df_clean <- cbind(dummies, df_clean)
+
+# Evaluation data - Convert our `Brand.Code` column into a set of dummy variables
+df_eval_clean$PH <- 1
+eval_dummies <- predict(df_clean_dummy, df_eval_clean)
+
+# If the eval dataset doesn't have a specific `Brand.Code` lets add dummy columns with all 0's.
+for (c in dummy_cols) {
+  if (!(c %in% colnames(eval_dummies))) {
+    eval_dummies[c] <- 0
+  }
+}
+
+# Now sort the eval_dummy columns so they match the training set dummies
+eval_dummy_cols <- sort(colnames(eval_dummies))
+eval_dummies <- as.tibble(eval_dummies) %>%
+  dplyr::select(eval_dummy_cols)
+
+# remove the original categorical feature
+df_eval_clean <- df_eval_clean %>%
+  dplyr::select(-c(`Brand.Code`, PH))
+
+# add the new dummy columns to our main eval dataframe
+df_eval_clean <- cbind(eval_dummies, df_eval_clean)
+
+```
+
+### Transform features with skewed distributions
+
+Lets apply the Box-Cox transformation to the skewed features using `preProcess` from `caret` to ensure we are using distributions that better approximate normal.
+
+```{r, echo=FALSE, fig.height=14, fig.width=8, message=FALSE, warning=FALSE}
+
+# Drop the target, PH, we don't want to transform our target,
+df_features <- df_clean %>%
+  dplyr::select(-c(PH))
+
+# Our evaluation (hold out data), note it didn't have the PH column
+df_eval_features <- df_eval_clean
+
+# Use caret pre-processing to handle scaling, norm'ing and BoxCox transforming our training data.
+preProcValues <- preProcess(
+  df_features, 
+  method = c("center", "scale", "BoxCox"))
+df_transformed <- predict(preProcValues, df_features)
+df_transformed$PH <- df_clean$PH
+
+# Do the same for the evaluation data set
+df_eval_transformed <- predict(preProcValues, df_eval_features)
+preProcValues
+
+```
+
+
+## 3. Build Models
+
+First, we split our cleaned dataset into training and testing sets (80% training, 20% testing). 
+This split is necessary because the provided evaluation data set does not provide `PH` values.
+
+```{r}
+
+training_set <- createDataPartition(df_transformed$PH, p=0.8, list=FALSE)
+df_transformed1 <- df_transformed %>% dplyr::select (-PH)
+X.train <- df_transformed1[training_set, ]
+y.train <- df_transformed$PH[training_set]
+X.test <- df_transformed1[-training_set, ]
+y.test <- df_transformed$PH[-training_set]
+
+
+dim(X.train)
+dim(X.test)
+```
+
+
+#### Model 1 - Support Vector Machine (SVM)
+
+Support Vector Machine (SVM) is a supervised machine learning algorithm which is mainly used to classify data into different classes.
+Unlike most algorithms, SVM makes use of a hyperplane which acts like a decision boundary between the various classes.
+SVM can be used to generate multiple separating hyperplanes such that the data is divided into segments and each segment contains only one kind of data.
+
+
+```{r}
+
+cl <- makePSOCKcluster(5)
+registerDoParallel(cl)
+set.seed(100)
+
+trctrl <- trainControl(method = "repeatedcv", number = 10, repeats = 3)
+
+svm_Linear <- train(x = X.train, y = y.train, method = "svmLinear",
+                    trControl=trctrl,
+                    preProcess = c("center", "scale"),
+                    tuneLength = 10)
+
+stopCluster(cl)
+
+svm_Linear$results #summary(svm_Linear)
+
+# Applying Model 1 against our Test Data:
+svm_pred <- predict(svm_Linear, newdata = X.test)
+test <- data.frame(cbind(svm_pred,y.test))
+colnames(test) <- c("test","actual")
+test <- test %>%
+  mutate(pe = abs(actual - test)/actual)
+
+MAPE <- (mean(test$pe))*100
+MAPE
+
+
+ggplot(test, aes(x = actual, y = test)) +
+  geom_line() +
+  geom_point()
+
+
+# Bind results to a table to compare performance of our two models
+results <- data.frame()
+results <- data.frame(t(postResample(pred = svm_pred, obs = y.test))) %>% mutate(Model = "Support Vector Machine (SVM)") %>% rbind(results)
+#results
+
+```
+
+
+
+#### Model 2 - Multivariate Adaptive Regression Splines (MARS)
+
+The approach used for the second model, Multivariate Adaptive Regression Splines (MARS), creates contrasting versions of each predictor to enter the model. These versions, features known as hinge functions, each represent an exclusive portion of the data. Such features are created iteratively for all model predictors, a process that is followed by "pruning" of individual features that do not contribute to the model.
+
+
+```{r MARS, warning=FALSE}
+
+options(max.print = 1e+06)
+
+cl <- makePSOCKcluster(5)
+registerDoParallel(cl)
+set.seed(100)
+
+mars_grid <- expand.grid(.degree = 1:2, .nprune = 2:15)
+mars_model <- train(x = X.train, y = y.train, method = "earth", 
+                    tuneGrid = mars_grid, 
+                    preProcess = c("center", "scale"), 
+                    tuneLength = 10)
+
+stopCluster(cl)
+
+summary(mars_model)
+
+# Applying Model 2 against our Test Data:
+mars_pred <- predict(mars_model, newdata = X.test)
+test <- data.frame(cbind(mars_pred, y.test))
+colnames(test) <- c("test","actual")
+test <- test %>%
+  mutate(pe = abs(actual - test)/actual)
+
+MAPE <- (mean(test$pe))*100
+MAPE
+
+ggplot(test, aes(x = actual, y = test)) +
+  geom_line() +
+  geom_point()
+
+
+# Bind results to a table to compare performance of our two models
+results <- data.frame(t(postResample(pred = mars_pred, obs = y.test))) %>% mutate(Model = "Multivariate Adaptive Regression Splines (MARS)") %>% rbind(results)
+results
+
+```
+
+
+
+### Model Summary
+
+We evaluate our two models using three criteria: root mean squared error (RMSE), R-squared, and mean absolute error. The table below lists these criteria for each model.
+
+```{r}
+
+results %>% dplyr::select(Model, RMSE, Rsquared, MAE)
+
+```
+
+## 4. Model Selection
+
+Based on evaluating both RMSE and $R^2$, MARS slightly outperformed SVM. MARS also has a better MAPE at 1.14.
+
+
+```{r}
+varImp(mars_model)
+``` 
+
+## Predictions
+
+We apply **Model #2 (MARS)** to the holdout evaluation set to predict the targets. We have saved these predictions as csv in the file `eval_predicted.csv`.
+
+
+```{r, echo=F}
+
+predictions <- predict(mars_model, df_eval_transformed)
+df_eval$PH <- round(predictions, 2)
+write.csv(df_eval, 'eval_predicted.csv', row.names=F)
+
+```
+
+{"mode":"full","isActive":false}
+
+
+# Linear models: OLS & PLS
+---
+title: 'DATA 624 Proj 2: Linear Models'
+author: "Daniel Moscoe"
+date: "7/8/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(caret)
+library(corrplot)
+library(pls)
+set.seed(0707)
+```
+
+## Import
+
+```{r}
+initial_import.df <- read.csv("https://raw.githubusercontent.com/dmoste/DATA624/main/Project2/StudentDataTOMODEL.csv")
+to_predict.df <- read.csv("https://raw.githubusercontent.com/dmoste/DATA624/main/Project2/StudentEvaluationTOPREDICT.csv")
+```
+
+## Tidy
+
+```{r}
+#Drop missing PH rows
+initial_import.df <- initial_import.df %>%
+  filter(!is.na(PH))
+
+#Separate predictors, response
+preds.df <- initial_import.df[,-26]
+resp.df <- initial_import.df[,26]
+```
+
+## Transform
+
+```{r}
+#Impute missing values with medians
+brand_code <- preds.df[,1]
+preds.df <- lapply(preds.df[,2:ncol(preds.df)], function(x) replace(x, is.na(x), median(x, na.rm = TRUE)))
+preds.df <- as.data.frame(preds.df)
+preds.df$`Brand.Code` <- brand_code
+
+#Impute missing Brand Code as "C"
+brand.code_na <- preds.df$Brand.Code == ""
+preds.df[brand.code_na,32] <- "C"
+
+#Drop low-variance variable
+preds.df <- preds.df[,-12]
+
+#Center / scale / Box-Cox
+trans <- preProcess(preds.df, method = c("center", "scale", "BoxCox"))
+preds.df <- predict(trans, preds.df)
+
+#Split into train/test
+training_rows <- sample(nrow(preds.df), nrow(preds.df) * 0.80, replace = FALSE)
+train_preds.df <- preds.df[training_rows,]
+train_resp.df <- resp.df[training_rows]
+test_preds.df <- preds.df[-training_rows,]
+test_resp.df <- resp.df[-training_rows]
+```
+
+## Model: Ordinary Least Squares
+
+Since this section will be about linear models, let's search for highly correlated variables. While removing these variables doesn't guarantee an absence of multicollinearity, it is a useful first step, and can reduce the total number of variables in the model.
+
+```{r}
+corr_matrix <- cbind(train_preds.df, train_resp.df) %>%
+  keep(is.numeric) %>%
+  cor(method = "pearson")
+corrplot::corrplot(corr_matrix, method = "circle", is.corr = TRUE)
+```
+
+Groups of variables that are highly correlated: `Alch Rel` `Density`, `Balling`, `Carb Rel`, `Balling Lvl`;
+`Air Pressurer` `Carb Rel`, `Balling Lvl`;
+`Bowl Setpoint`, `Filler Level`;
+`Filler Speed`, `MFR`;
+`Hyd Pressure2`, `Hyd Pressure3`;
+`Carb Temp`, `Carb Pressure`.
+
+To avoid collinearity in a linear model, we eliminate some of the most highly correlated variables:  
+Keep `Balling` and drop `Balling Lvl` and Density;
+Keep `Alch Rel` and drop `Carb Rel`;
+Keep `Bowl Setpoint` and drop `Filler Level`;
+Keep `MFR` and drop `Filler Speed`;
+Keep `Hyd Pressure2` and drop `Hyd Pressure3`;
+Keep `Carb Pressure` and drop `Carb Temp`.
+
+```{r}
+train_preds2.df <- train_preds.df %>%
+  select(-`Balling.Lvl`,
+         -Density,
+         -`Carb.Rel`,
+         -`Filler.Level`,
+         -`Filler.Speed`,
+         -`Hyd.Pressure3`,
+         -`Carb.Temp`)
+
+corr_matrix <- cbind(train_preds2.df, train_resp.df) %>%
+  keep(is.numeric) %>%
+  cor(method = "pearson")
+
+corrplot::corrplot(corr_matrix, method = "circle", is.corr = TRUE)
+
+```
+
+There are still some large correlations remaining, for example, between `Balling` and `Alch Rel`. But because I know Balling is a measure of sugar content, and I expect that sugar content is related to pH, I'm going to keep it for now. `Mnf Flow` is also correlated to many other variables. It may drop out of a linear model later on.
+
+```{r}
+#OLS
+data_ctrl <- trainControl(method = 'cv', number = 10)
+train1.lm <- train(train_preds2.df, train_resp.df,
+                   method = "lm")
+summary(train1.lm)
+```
+Note RMSE = 0.1345.
+
+```{r}
+train1_MAPE <- 100 * (sum(abs(train1.lm$finalModel$residuals) / train_resp.df)) / length(train_resp.df)
+```
+
+MAPE = 1.217.
+
+Before we move on to other models, let's prune variables with p > 0.05.
+
+```{r}
+train2.lm <- train(train_preds2.df[,c(3, 8:11, 13:15, 17:21, 23, 24)], train_resp.df, method = "lm")
+summary(train2.lm)
+```
+
+RMSE = 0.1345.
+
+```{r}
+train2_MAPE <- 100 * (sum(abs(train2.lm$finalModel$residuals) / train_resp.df)) / length(train_resp.df)
+```
+
+MAPE: 1.219.  
+
+After dropping variables with high p-values, the simpler model retains almost all its explanatory power.
+
+## Visualize
+
+```{r}
+#Actual vs predicted
+plot(x = train_resp.df, y = train2.lm$finalModel$fitted.values,
+     xlab = "Actual pH values for training set",
+     ylab = "Fitted pH values for linear model",
+     main = "Fitted vs Actual pH values for training set")
+```
+
+The plot of fitted vs actual values for the training data shows a clear positive linear relationship, although variability is large. The large variability corresponds to the relatively low value of $R^2 = 0.40$.
+
+```{r}
+#Predicted vs residual
+plot(x = train2.lm$finalModel$fitted.values, y = train2.lm$finalModel$residuals,
+     xlab = "Fitted pH values for linear model",
+     ylab = "Residuals from linear model",
+     main = "Residuals vs Fitted pH values for training set")
+```
+
+The residuals appear to be randomly distributed with roughly constant variability about a mean of zero.
+
+## Model: Partial Least Squares
+
+Because there is large possibility of multicollinearity in linear models involving this data, feature selection is an important part of the modeling process. Partial least squares performs a kind of feature selection, because it generates new uncorrelated predictors based on "underlying... relationships among the predictors which are highly correlated with the response (KJ 114).
+
+```{r}
+train.pls <- train(train_preds.df, train_resp.df,
+                    method = "pls",
+                    tuneLength = 20,
+                    trControl = data_ctrl)
+```
+
+```{r}
+summary(train.pls)
+plot(x = train.pls$results$ncomp, y = train.pls$results$RMSE,
+     xlab = "Number of components in PLS model",
+     ylab = "RMSE",
+     main = "RMSE declines then stabilizes with increase in PLS components")
+```
+
+The optimal number of components for the PLS model is 13.
+
+```{r}
+print("RMSE:")
+print(train.pls$results$RMSE[13])
+print("R^2:")
+print(train.pls$results$Rsquared[13])
+
+PLS_resid <- train.pls$finalModel$residuals[, 1, 13]
+train_PLS_MAPE <- (100 / length(train_resp.df)) * sum(abs(PLS_resid /train_resp.df))
+
+print("MAPE:")
+print(train_PLS_MAPE)
+
+```
+
+Examining the actual and predicted values of the response variable:
+
+```{r}
+train.pls_predicted <- predict(train.pls, train_preds.df)
+
+plot(x = train_resp.df, y = train.pls_predicted,
+     xlab = "Actual pH values for training set",
+     ylab = "PLS Fitted pH values for training set",
+     main = "Fitted vs actual pH values for training set")
+```
+
+```{r}
+#Residuals
+
+plot(x = train.pls_predicted, y = train_resp.df - train.pls_predicted,
+     xlab = "Fitted pH values for PLS model",
+     ylab = "Residuals from PLS model",
+     main = "PLS Residuals vs Fitted pH values for training set")
+```
+
+The residuals appears to be randomly distributed with roughly constant variability about a mean of zero.
+
+## Model: Elastic Net
+
+An elastic net model is another linear modeling method that performs feature selection and is robust to multicollinearity. The elastic net model combines a ridge penalty with a lasso penalty on model coefficients to improve the overall stability of the model. Elastic net models tolerate some increase in coefficient bias in order to reduce variance. Here, we search a range of lasso and ridge parameters to determine an optimal model. 
+
+```{r}
+enetGrid <- expand.grid(.lambda = c(0, 0.01, 0.1), .fraction = seq(0.05, 1, length = 20))
+enetTune <- train(train_preds.df[,-31], train_resp.df,
+                  method = "enet",
+                  tuneGrid = enetGrid,
+                  trControl = data_ctrl)
+```
+
+The optimal model occurs with $\lambda = 0$ and fraction = 1. This is equivalent to a pure lasso model. Including a ridge penalty did not improve model performance.
+
+## Visualize
+
+```{r}
+ggplot(data = enetTune$results, aes(x = fraction, y = RMSE, color = lambda)) +
+  geom_point() +
+  xlab("Fraction of full solution") +
+  ylab("RMSE") +
+  ggtitle("Optimal RMSE = 0.139 for pure lasso model with all predictors")
+```
+
+Minimum RMSE is 0.1387272.  
+
+```{r}
+ggplot(data = enetTune$results, aes(x = fraction, y = Rsquared, color = lambda)) +
+  geom_point() +
+  xlab("Fraction of full solution") +
+  ylab("R-Squared") +
+  ggtitle("R-squared is maximized for lam = 0, frac = 1")
+```
+
+For the optimal elastic net model, $R^2 = 0.365$.
+
+```{r}
+enet_predicted <- predict(enetTune, train_preds.df[,-31])
+plot(x = train_resp.df, y = enet_predicted,
+     xlab = "Actual pH values",
+     ylab = "Fitted pH values for Elastic Net model",
+     main = "Actual vs Fitted pH values for Elastic Net model")
+```
+
+The relationship between actual and fitted values is linear with positive slope. It demonstrates constant but large variability, consistent with a relatively low value of $R^2 = 0.365$.
+
+```{r}
+#MAPE for Elastic Net:
+
+enet_MAPE <- (100 / length(train_resp.df)) * sum(abs((train_resp.df - enet_predicted) / train_resp.df))
+
+print("MAPE for elastic net:")
+print(enet_MAPE)
+```
+
+
+```{r}
+plot(x = enet_predicted, y = train_resp.df - enet_predicted,
+     xlab = "Fitted pH Values for Elastic Net",
+     ylab = "Residuals from Elastic Net Model",
+     main = "Residuals vs Fitted pH Values for Elastic Net")
+```
+
+The residuals appear to be randomly distributed about a mean of zero. Variability appears to be largest near fitted values around 8.6.
+
+## Test best model, PLS
+
+The model with the best performance among those examined here is PLS. Here we test the performance of the PLS model on the holdout data.
+
+```{r}
+testset_predicted <- predict(train.pls, test_preds.df)
+PLS_test <- data.frame(cbind(test_resp.df, testset_predicted))
+PLS_test <- PLS_test %>%
+  mutate("diff" = testset_predicted - test_resp.df)
+
+PLS_test <- PLS_test %>%
+  mutate("sq_diff" = diff^2)
+
+PLS_test_RMSE <- sqrt(sum(PLS_test$sq_diff) / nrow(PLS_test))
+
+print("RMSE:")
+print(PLS_test_RMSE)
+```
+
+The PLS model performs similarly on the holdout data as it did on the test set. This provides evidence that the model has not been over-fitted to the training data.
+
+## Predict
+
+Finally, we use the PLS model to predict pH values for new samples.
+
+```{r}
+final_preds.df <- to_predict.df[,-26]
+
+final_brand_code <- final_preds.df[,1]
+final_preds.df <- lapply(final_preds.df[,2:ncol(final_preds.df)], function(x) replace(x, is.na(x), median(x, na.rm = TRUE)))
+final_preds.df <- as.data.frame(final_preds.df)
+final_preds.df$`Brand.Code` <- final_brand_code
+
+#Impute missing Brand Code as "C"
+final_brand.code_na <- final_preds.df$Brand.Code == ""
+final_preds.df[final_brand.code_na,32] <- "C"
+
+#Drop low-variance variable
+final_preds.df <- final_preds.df[,-12]
+
+#Center / scale / Box-Cox
+final_trans <- preProcess(final_preds.df, method = c("center", "scale", "BoxCox"))
+final_preds.df <- predict(final_trans, final_preds.df)
+
+final_PH <- predict(train.pls, final_preds.df)
+```
+
+### Neural Networks
+
+---
+title: "Group2_Project2_Lin"
+output: html_document
+---
+
+## Neural Network Analysis
+Neural networks are non-linear regression techniques inspired by the brain. A neural network takes input based on existing data and uses backpropagation to optimize the weights of input variables to improve the model. The output predictions are based on the data from the input and hidden layers.
+
+Neural networks are powerful and work well as deep learning algorithms. They work well with large datasets and produce results with high accuracy. However, they are hard to interpret, require large amount of data and can be time consuming to build as they need a lot of customizations.
+
+```{r}
+# Import libraries
+library(mice)
+library(VIM)
+library(lattice)
+library(ggplot2)
+library(plyr)
+library(dplyr)
+library(tidyverse)
+```
+
+```{r}
+# Load data
+to_model <- read.csv("https://raw.githubusercontent.com/lincarrieli/Data624/main/StudentData%20-%20TO%20MODEL.csv")
+to_predict <- read.csv("https://raw.githubusercontent.com/lincarrieli/Data624/main/StudentEvaluation-%20TO%20PREDICT.csv")
+```
+
+```{r}
+#summary(to_model)
+```
+
+
+### Data Processing
+The data is processed by replacing missing values with mean and converting categorical variable to numeric. Visualization of distributions of predictor variables is generated.
+```{r}
+# Compute missing values in each column
+colSums(is.na(to_model))
+
+# Check number of unique values in Brand.Code column
+table(to_model$Brand.Code)
+```
+
+
+```{r}
+# Assign empty Brand Codes as "A"
+to_model$Brand.Code[to_model$Brand.Code == ""] <- "A"
+```
+
+```{r}
+library(plyr)
+# Converting Brand.Code to numbers
+to_model[,1] <- mapvalues(to_model[,1],
+                                  from = c("A","B","C","D"),
+                                  to = c(1,2,3,4))
+to_model[,1] <- as.integer(to_model[,1])
+```
+
+```{r}
+# Remove response column pH
+df1 <- to_model[, -which(names(to_model) %in% 'PH')]
+```
+
+```{r}
+# Impute missing data with mean
+NA2mean <- function(x) replace(x, is.na(x), mean(x, na.rm = TRUE))
+df1[] <- lapply(df1, NA2mean)
+```
+
+
+### Visualize distribution of predictive variables
+```{r}
+library(reshape2)
+library(ggplot2)
+d <- melt(df1)
+ggplot(d,aes(x = value)) + 
+    facet_wrap(~variable,scales = "free_x") + 
+    geom_histogram()
+```
+The data exhibit a mixture of distribution patterns. Fill. Ounces, PC.Volume, and Carb.Temp are normally distributed. PSC and PSC.Fill are skewed; and other variables have bimodal distriubtions.
+
+### Transformation
+It's important to normalize the data before training for Neural Network analysis.
+A standard approach is to scale the inputs to have mean 0 and a variance. Also linear decorrelation/whitening/pca helps a lot.
+
+```{r}
+# Center and scale data 
+library(caret)
+trans <- preProcess(df1,
+                    method = c("center", "scale"))
+transformed_df <- predict(trans, df1)
+
+# Get predictors with near zero variance
+nzv <- nearZeroVar(transformed_df, saveMetrics = TRUE)
+nzv[nzv[,"nzv"] == TRUE,]
+```
+
+```{r}
+# Drop Hyd.Pressure1
+drops <- c("Hyd.Pressure1")
+transformed_df <- transformed_df[,!(names(transformed_df) %in% drops)]
+```
+
+```{r}
+# Get highly correlated variables and drop them
+higlyCorrelated <- findCorrelation(cor(transformed_df), cutoff = .75)
+processed <- transformed_df[, -higlyCorrelated]
+```
+
+```{r}
+# Add PH back to dataset
+processed <- cbind(to_model[,"PH"], processed)
+names(processed)[1] <- ("PH")
+```
+
+```{r}
+# Drop rows with missing PH
+processed <- processed[complete.cases(processed),]
+```
+
+### Building a Neural Network model
+```{r}
+#Split data into train and test
+set.seed(12345)
+train_ind <- sample(seq_len(nrow(processed)),
+                    size = floor(0.75*nrow(processed)))
+
+train <- processed[train_ind,]
+test <- processed[-train_ind,]
+```
+
+
+```{r}
+# Set training process
+fitControl <- trainControl(method = "cv", 
+                           number = 10)
+
+nnetGrid <-  expand.grid(.decay = c(0.5, 0.1),                          
+                         .size = c(5,6,7))
+
+nnetFit <- train(train[,-1],
+                 train[,1],
+                 method = "nnet",
+                 maxit = 500,
+                 trace = F,
+                 linout = 1,
+                 trControl = fitControl,
+                 tuneGrid = nnetGrid,
+                 MaxNWts = 10 * (ncol(train) + 1) + 10 + 1)
+```
+
+
+```{r}
+library(mlbench)
+
+# Rank variables by importance
+importance <- varImp(nnetFit, scale = FALSE)
+print(importance)
+plot(importance)
+```
+varImp() shows that Brand.Code, Hyd.Pressure2, Carb.Flow, Bowl.Setpoint and Temperature are the top five attributes and PSC is the least important attribute.
+
+
+```{r}
+
+nnetTune <- nnet(train[,-1],
+                 train[,1],
+                 size = 4,
+                 linout = TRUE,
+                 decay = 0,
+                 maxit = 100,
+                 MaxNWts = 10*(ncol(train)+1)+10+1) 
+```
+
+```{r}
+# Prediction
+nnetPred <- predict(nnetTune, test[,-1])
+```
+
+```{r}
+# Plot actual data vs. predicted
+plot(nnetPred,test$PH)
+```
+
+
+```{r}
+# Model evaluation
+RMSE(test$PH, nnetPred)
+mean(abs((test$PH-nnetPred)/test$PH)) * 10
+```
+
+```{r}
+library(MLmetrics)
+MAPE(nnetPred, test$PH)
+```
+
+### Transform and process predict data
+
+```{r}
+# Assign empty Brand Codes as "A"
+to_predict$Brand.Code[to_predict$Brand.Code == ""] <- "A"
+```
+
+```{r}
+library(plyr)
+# Converting Brand.Code to numbers
+to_predict[,1] <- mapvalues(to_predict[,1],
+                                  from = c("A","B","C","D"),
+                                  to = c(1,2,3,4))
+to_predict[,1] <- as.integer(to_predict[,1])
+```
+
+```{r}
+# Remove response column pH
+pred_df <- to_predict[, -which(names(to_predict) %in% 'PH')]
+```
+
+```{r}
+# Impute missing data with mean
+NA2mean <- function(x) replace(x, is.na(x), mean(x, na.rm = TRUE))
+pred_df[] <- lapply(pred_df, NA2mean)
+```
+
+```{r}
+# Center and scale data 
+library(caret)
+pred_trans <- preProcess(pred_df,
+                    method = c("center", "scale"))
+transformed_pred <- predict(pred_trans, pred_df)
+```
+
+```{r}
+# Drop Hyd.Pressure1
+drops <- c("Hyd.Pressure1")
+transformed_pred <- transformed_pred[,!(names(transformed_pred) %in% drops)]
+```
+
+```{r}
+# Add PH back to dataset
+transformed_pred <- cbind(to_predict[,"PH"], transformed_pred)
+names(transformed_pred)[1] <- ("PH")
+```
+
+```{r}
+pred_final <- predict(nnetPred, transformed_pred[,-1])
+```
+
+
+
+
+
+{"mode":"full","isActive":false}
