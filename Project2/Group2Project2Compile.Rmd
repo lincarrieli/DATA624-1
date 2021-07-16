@@ -1639,6 +1639,7 @@ varImp() shows that Brand.Code, Hyd.Pressure2, Carb.Flow, Bowl.Setpoint and Temp
 
 
 ```{r, include=FALSE}
+library(nnet)
 # Model training
 nnetTune <- nnet(train[,-1],
                  train[,1],
