@@ -28,6 +28,7 @@ library(knitr)
 
 
 ```{r}
+# Load the datasets
 initial_import.df <- read.csv("https://raw.githubusercontent.com/dmoste/DATA624/main/Project2/StudentDataTOMODEL.csv")
 to_predict.df <- read.csv("https://raw.githubusercontent.com/dmoste/DATA624/main/Project2/StudentEvaluationTOPREDICT.csv")
 ```
@@ -35,7 +36,6 @@ to_predict.df <- read.csv("https://raw.githubusercontent.com/dmoste/DATA624/main
 A correlation plot shows the pairwise correlations in the data set:
 
 ```{r}
-###
 corr_matrix <- initial_import.df %>%
   keep(is.numeric) %>%
   drop_na() %>%
@@ -67,7 +67,7 @@ initial_import.df %>%
 
 ## Our modeling process
 
-In this report we explore a range of linear models, tree models, and neural networks to identify a procedure that is highly accurate in predicting the pH of a previously unseen beverage. For each model, we take the following steps:  
+In this report we explore a range of linear models, tree-based models, and neural networks to identify a procedure that is highly accurate in predicting the pH of a previously unseen beverage. For each model, we take the following steps:  
 
 (1) Impute missing data if necessary;
 (2) Transform data to address skewness, outliers, and low-variance variables;
@@ -79,7 +79,8 @@ In this report we explore a range of linear models, tree models, and neural netw
 
 ## Summary of models
 
-We built six models in total and used MAPE and RMSE scores to evaluate model performance. The summary table below shows the models and their corresponding MAPE and RMSE scores. We noticed that distance and regression tree model performed the best, followed by linear models, and Neural Networks (nonlinear) model had the worst performance overall.
+We built six models in total and used MAPE and RMSE scores to evaluate model performance. The summary table below shows the models and their corresponding MAPE and RMSE scores. We noticed that distance and regression tree models performed the best, followed by linear models. Neural Networks (nonlinear) model had the worst performance overall.
+
 
 ```{r results = 'asis'}
 
@@ -95,13 +96,16 @@ kable(df_sort, caption = "Summary of models")
 
 ```
 
-## Optimal model: [Random Foerst]
-Our best two performing models are K-Nearest Neighbors and Random Forests, both with a MAPE of < 1.0. We chose to highligh the Random Forest model because...
+## Optimal model: Random Foerst
+Our best two performing models are K-Nearest Neighbors and Random Forests, both with a MAPE of < 1.0. In this report we will focus on the Random Forest model. Random Forest model is an ensemble tree-based learning algorithm that averages the prediction over many individual trees. The algorithm uses bootstrap aggregation, or bagging to reduce over fitting and improve accuracy. 
+
+Random Forest models are easy to interpret, and are flexible with both regression and classification problems. They work well with categorical and continuous variables, and can handle large datasets without the data normalization requirement. 
 
 
 - Go carefully through each step in "Our modeling process."
 - Any guesses about why this was the minimum-MAPE model?
 - Can you think of any next steps you might take to improve the model even further?
+
 
 ```{r}
 data <- read.csv("https://raw.githubusercontent.com/dmoste/DATA624/main/Project2/StudentDataTOMODEL.csv")
